@@ -5,7 +5,7 @@ http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff1.
 <?xml version="1.0" encoding="utf-8" ?>
 <application xmlns="http://ns.adobe.com/air/application/2.0">
 	<id>cn.webim20.nextim</id>
-	<version>0.0.1</version>
+	<version>0.1.0</version>
 	<filename>nextim</filename>
 	<name>nextim test</name>
 	<description>nextim 20</description>
