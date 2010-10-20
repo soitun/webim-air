@@ -11,7 +11,7 @@ http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff1.
 	<description>nextim 20</description>
 	<copyright>2010 by hidden</copyright>
 	<customUpdateUI>true</customUpdateUI>
-	<!--<installFolder>tongxue</installFolder> -->
+	<!--<installFolder>nextim</installFolder> -->
 	<initialWindow>
 		<title>NextIM</title>
 		<content>air.html</content>
