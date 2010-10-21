@@ -5,4 +5,4 @@
 
 #adt -certificate -cn nextim 1024-RSA cert.pfx pass
 
-adt -package -storetype pkcs12 -keystore cert.pfx nextim.air application.xml air.html air.window.html custom.js updater.js static updateConfig.xml LICENSE.txt
+adt -package -storetype pkcs12 -keystore cert.pfx nextim.air application.xml air.html static air.window.html custom.js updater.js updateConfig.xml LICENSE.txt
