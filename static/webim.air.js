@@ -5,8 +5,8 @@
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Wed Oct 20 11:10:29 2010 +0800
- * Commit: a24575fb3b5cefd924ba53ac3f67e0f682267614
+ * Date: Thu Oct 21 17:30:18 2010 +0800
+ * Commit: eee61e6d0d9a38ad161f00701b3b974f88b9b1bd
  */
 (function(window, document, undefined){
 
@@ -2015,8 +2015,8 @@ model("history",{
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Wed Oct 13 18:37:07 2010 +0800
- * Commit: 31cf2c3b6e13125b4343efcfdee155b476710903
+ * Date: Thu Oct 21 17:31:05 2010 +0800
+ * Commit: 03e543ec30dbf96771f72f5e77cd11e3488e70a3
  */
 (function(window,document,undefined){
 
@@ -2933,9 +2933,9 @@ widget( "window", {
 		if ( window.runtime ) {
 			var win = self.window.nativeWindow, doc = self.window.document,
 			plat = "osx";
-			self.window.htmlLoader.filters = window.runtime.Array(
-				new window.runtime.flash.filters.DropShadowFilter(6, 75, 0, .4, 12, 12)
-			);
+			//self.window.htmlLoader.filters = window.runtime.Array(
+			//	new window.runtime.flash.filters.DropShadowFilter(6, 75, 0, .4, 12, 12)
+			//);
 			//addClass( doc.body, plat );
 
 			addEvent( doc, "keydown", function( event ) {
