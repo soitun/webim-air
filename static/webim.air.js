@@ -5,8 +5,8 @@
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Tue Oct 26 19:16:18 2010 +0800
- * Commit: 9fca9243d6cd8325ab0d597dae1f16ae559ff103
+ * Date: Thu Oct 28 10:15:53 2010 +0800
+ * Commit: a097e708fb2b83f1f1daf322a7c931905bca7d97
  */
 (function(window, document, undefined){
 
@@ -1988,8 +1988,8 @@ model("history", {
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Wed Oct 27 14:47:00 2010 +0800
- * Commit: 61d644719f552287c97ce8b5f4a4327a66aea540
+ * Date: Thu Oct 28 11:51:15 2010 +0800
+ * Commit: ab6be23c52f90b88d438e5f5bed3d616231a503e
  */
 (function(window,document,undefined){
 
@@ -2755,6 +2755,7 @@ widget( "window", {
         maximizable: true,
         minimizable: true,
         closeable: true,
+	closeToHide: false,
 	layout: "app:/test/air.window.html",
         //count: 0, // notifyUser if count > 0
 	//A box with position:absolute next to a float may disappear
@@ -2886,7 +2887,7 @@ widget( "window", {
 
 			addEvent( $.resize, "mousedown", function( event ) {
 				win.startResize( air.NativeWindowResize.BOTTOM_RIGHT );
-			});
+			} );
 
 			if ( self.options.main ) {
 				//Show window when activate the application.
@@ -2907,8 +2908,14 @@ widget( "window", {
 			addEvent( win, air.Event.DEACTIVATE, function( e ) {
 				self.d( "deactivate", e );
 			} );
+			addEvent( win, air.Event.CLOSING, function( e ) {
+				if ( self.options.closeToHide ) {
+					self.hide();
+					e.preventDefault();
+				}
+			} );
 			addEvent( win, air.Event.CLOSE, function( e ) {
-				self.d( "close", e );
+					self.d( "close", e );
 			} );
 			addEvent( win, air.NativeWindowDisplayStateEvent.DISPLAY_STATE_CHANGE, function( e ) {
 				self.d( "displayStateChange", e );
@@ -2940,11 +2947,10 @@ widget( "window", {
 		air.NativeWindow.supportsNotification && self.window && self.window.notifyUser( type );
 	},
 	show: function() {
-		this.window.nativeWindow.restore();
-
+		this.window && ( this.window.nativeWindow.visible = true );
 	},
 	hide: function() {
-		this.window.nativeWindow.visible = false;
+		this.window && ( this.window.nativeWindow.visible = false );
 	},
 	_changeState: function( state ) {
 		var el = this.element, className = state == "restore" ? "normal" : state;
@@ -2974,22 +2980,24 @@ widget( "window", {
 	},
 	close: function() {
 		var self = this;
-		if ( self.options.main ) {
+		if ( self.options.closeToHide ) {
 			self.hide();
 		} else {
 			self.window && self.window.nativeWindow && self.window.nativeWindow.close(); 
 		}
 	},
-
 	activate: function() {
 		var win = this.window && this.window.nativeWindow;
-		if ( win ) {
-			self.show();
-			win.restore();
-			win.activate();
-			win.orderToFront();
-			air.NativeApplication.nativeApplication.activate( win );
-		}
+		win && win.activate();
+/*
+if ( win ) {
+self.show();
+win.restore();
+win && win.activate();
+win.orderToFront();
+air.NativeApplication.nativeApplication.activate( win );
+}
+*/
 	},
 	isActive: function() {
 		return this.window && this.window.nativeWindow.active;
@@ -3035,6 +3043,7 @@ widget("layout", {
 		extend( self, {
 			window: new webimUI.window( null, {
 				main: true,
+				closeToHide: true,
 				name: "layout",
 				title: "webim",
 				maximizable: true,
@@ -3060,6 +3069,9 @@ widget("layout", {
 			showWin = function() {
 				self.window.show();
 			};
+			addEvent( nan, air.Event.EXITING, function( e ) {
+				self.window.options.closeToHide = false;
+			} );
 			if( na.supportsSystemTrayIcon ) {
 				supportIcon = true;
 				iconUrl = xmlobject.getElementsByTagName("image16x16")[0].textContent;
@@ -3093,13 +3105,6 @@ widget("layout", {
 				}
 			}
 		}
-
-
-		//test
-		setInterval( function() {
-			self.notifyUser( air.NotificationType.INFORMATIONAL );
-		}, 5000 );
-		self.setBadge( "3" );
 	},
 	_initEvents: function(){
 		var self = this, win = self.window, $ = self.$;
