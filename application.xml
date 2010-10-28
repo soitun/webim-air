@@ -5,8 +5,8 @@
 	http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff1.html 
 	-->
 	<id>cn.webim20.im</id>
-	<versionNumber>0.2.0</versionNumber>
-	<versionLabel>v0.2.0</versionLabel>
+	<versionNumber>0.2.1</versionNumber>
+	<versionLabel>v0.2.1</versionLabel>
 	<filename>nextim</filename>
 	<name>NextIM</name>
 	<description>nextim 20</description>

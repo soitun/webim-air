@@ -1,9 +1,9 @@
 var _IMC = {
-	path: "http://demo.webim20.cn/home/webim/",
+	path: "http://dzx.webim20.cn/source/plugin/webim/",
 	version: ""
 };
 //_IMC.questions =  [["0", "安全提问(未设置请忽略)"], ["1", "母亲的名字"], ["2", "爷爷的名字"], ["3", "父亲出生的城市"], ["4", "你其中一位老师的名字"], ["5", "你个人计算机的型号"], ["6", "你最喜欢的餐馆名称"], ["7", "驾驶执照最后四位数字"]];
-_IMC.notice =  "请使用demo.webim20.cn/home帐号登录";
+_IMC.notice =  "请使用 dzx.webim20.cn 帐号登录";
 ( function( webim ) {
 	var path = _IMC.path;
 	var webim = window.webim;
