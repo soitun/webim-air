@@ -5,8 +5,8 @@
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Thu Oct 21 17:31:05 2010 +0800
- * Commit: 03e543ec30dbf96771f72f5e77cd11e3488e70a3
+ * Date: Wed Oct 27 14:47:00 2010 +0800
+ * Commit: 61d644719f552287c97ce8b5f4a4327a66aea540
  */
 
 body {
@@ -321,8 +321,6 @@ html, body, .webim, .webim-window {
 
 .webim-window-header .webim-window-actions a {
 	float:left;
-	background: none;
-	border: none;
 	margin: 0 .1em;
 }
 
@@ -359,8 +357,8 @@ html, body, .webim, .webim-window {
 	width: 240px;
 	height: 500px;
 	position: absolute;
-	right: 0;
-	top: 0;
+	right: 120px;
+	top: 30px;
 }
 
 .webim-browser.webim-chat-window{

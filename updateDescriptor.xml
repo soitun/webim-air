@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <update xmlns="http://ns.adobe.com/air/framework/update/description/1.0"> 
-	<version>0.1.0</version>
+	<version>0.1.1</version>
 	<url>http://github.com/webim/webim-air/raw/master/nextim.air</url> 
 	<description>
 		<![CDATA[

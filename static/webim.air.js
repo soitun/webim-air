@@ -5,8 +5,8 @@
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Thu Oct 21 17:30:18 2010 +0800
- * Commit: eee61e6d0d9a38ad161f00701b3b974f88b9b1bd
+ * Date: Tue Oct 26 19:16:18 2010 +0800
+ * Commit: 9fca9243d6cd8325ab0d597dae1f16ae559ff103
  */
 (function(window, document, undefined){
 
@@ -179,62 +179,489 @@ function map( elems, callback ) {
 
 	return ret.concat.apply( [], ret );
 }
-var objectExtend = {
-	option: function(key, value) {
-		var options = key, self = this;
-		self.options = self.options || {};
-		if (typeof key == "string") {
-			if (value === undefined) {
-				return self.options[key];
-			}
-			options = {};
-			options[key] = value;
-		}
-		extend(self.options, options);
-		return self;
-	},
+/*!
+ * ClassEvent.js v0.2
+ *
+ * http://github.com/webim/ClassEvent.js
+ *
+ * Copyright (c) 2010 Hidden
+ * Released under the MIT, BSD, and GPL Licenses.
+ *
+ */
 
-	bind: function(type, fn){
-		var self = this, _events = self._events = self._events || {};
-		if (isFunction(fn)){
-			_events[type] = _events[type] || [];
-			_events[type].push(fn);
-		}
-		return this;
-	},
+function ClassEvent( type ) {
+	this.type =  type;
+	this.timeStamp = ( new Date() ).getTime();
+}
 
-	trigger: function(type, args){
-		var self = this, _events = self._events = self._events || {}, fns = _events[type];
-		if (!fns) return this;
-		args = isArray(args) ? args : makeArray(args);
-		for (var i = 0, l = fns.length; i < l; i++){
-			fns[i].apply(this, args);
-		}
-		return this;
-	},
-
-	unbind: function(type, fn) {
-		var self = this, _events = self._events = self._events || {};
-		if (!_events[type]) return this;
-		if (isFunction(fn)){
-			var _e = _events[type];
-			for (var i = _e.length; i--; i){
-				if ( _e[i] === fn ) _e.splice(i, 1);
-			}
-		} else {
-			delete _events[type];
-		}
-		return this;
+ClassEvent.on = function() {
+	var proto, helper = ClassEvent.on.prototype;
+	for ( var i = 0, l = arguments.length; i < l; i++ ) {
+		proto = arguments[ i ].prototype;
+		proto.a = proto.addEventListener = helper.addEventListener;
+		proto.r = proto.removeEventListener = helper.removeEventListener;
+		proto.d = proto.dispatchEvent = helper.dispatchEvent;
 	}
 };
-/*
-* Depends:
-* 	core.js
-*
-*/
 
-// key/values into a query string
-var r20 = /%20/g;
+
+ClassEvent.on.prototype = {
+	addEventListener: function( type, listener ) {
+		var self = this, ls = self.__listeners = self.__listeners || {};
+		ls[ type ] = ls[ type ] || [];
+		ls[ type ].push( listener );
+		return self;
+	},
+	dispatchEvent: function( event, extraParameters ) {
+		var self = this, ls = self.__listeners = self.__listeners || {};
+		event = event.type ? event : new ClassEvent( event );
+		ls = ls[ event.type ];
+		if ( Object.prototype.toString.call( extraParameters ) === "[object Array]" ) {
+			extraParameters.unshift( event );
+		} else {
+			extraParameters = [ event, extraParameters ];
+		}
+		if ( ls ) {
+			for ( var i = 0, l = ls.length; i < l; i++ ) {
+				ls[ i ].apply( self, extraParameters );
+			}
+		}
+		return self;
+	},
+	removeEventListener: function( type, listener ) {
+		var self = this, ls = self.__listeners = self.__listeners || {};
+		if ( ls[ type ] ) {
+			if ( listener ) {
+				var _e = ls[ type ];
+				for ( var i = _e.length; i--; i ) {
+					if ( _e[ i ] === listener ) 
+						_e.splice( i, 1 );
+				}
+			} else {
+				delete ls[ type ];
+			}
+		}
+		return self;
+	}
+};
+/*!
+ * ajax.js v0.1
+ *
+ * http://github.com/webim/ajax.js
+ *
+ * Copyright (c) 2010 Hidden
+ * Released under the MIT, BSD, and GPL Licenses.
+ *
+ */
+var ajax = ( function(){
+	var jsc = ( new Date() ).getTime(),
+	//Firefox 3.6 and chrome 6 support script async attribute.
+	scriptAsync = typeof( document.createElement( "script" ).async ) === "boolean",
+	rnoContent = /^(?:GET|HEAD|DELETE)$/,
+	rnotwhite = /\S/,
+	rbracket = /\[\]$/,
+	jsre = /\=\?(&|$)/,
+	rquery = /\?/,
+	rts = /([?&])_=[^&]*/,
+rurl = /^(\w+:)?\/\/([^\/?#]+)/,
+r20 = /%20/g,
+rhash = /#.*$/;
+
+// IE can async load script in fragment.
+window._fragmentProxy = false;
+//Check fragment proxy
+var frag = document.createDocumentFragment(),
+script = document.createElement( 'script' ),
+text = "window._fragmentProxy = true";
+try{
+	script.appendChild( document.createTextNode( text ) );
+} catch( e ){
+	script.text = text;
+}
+frag.appendChild( script );
+frag = script = null;
+
+function ajax( origSettings ) {
+	var s = {};
+
+	for( var key in ajax.settings ) {
+		s[ key ] = ajax.settings[ key ];
+	}
+
+	if ( origSettings ) {
+		for( var key in origSettings ) {
+			s[ key ] = origSettings[ key ];
+		}
+	}
+
+	var jsonp, status, data, type = s.type.toUpperCase(), noContent = rnoContent.test(type), head, proxy, win = window, script;
+
+	s.url = s.url.replace( rhash, "" );
+
+	// Use original (not extended) context object if it was provided
+	s.context = origSettings && origSettings.context != null ? origSettings.context : s;
+
+	// convert data if not already a string
+	if ( s.data && s.processData && typeof s.data !== "string" ) {
+		s.data = param( s.data, s.traditional );
+	}
+
+	// Matches an absolute URL, and saves the domain
+	var parts = rurl.exec( s.url ),
+	location = window.location,
+	remote = parts && ( parts[1] && parts[1] !== location.protocol || parts[2] !== location.host );
+
+	if ( ! /https?:/i.test( location.protocol ) ) {
+		//The protocol is "app:" in air.
+		remote = false;
+	}
+	remote = s.forceRemote ? true : remote;
+	if ( s.dataType === "jsonp" && !remote ) {
+		s.dataType = "json";
+	}
+
+	// Handle JSONP Parameter Callbacks
+	if ( s.dataType === "jsonp" ) {
+		if ( type === "GET" ) {
+			if ( !jsre.test( s.url ) ) {
+				s.url += (rquery.test( s.url ) ? "&" : "?") + (s.jsonp || "callback") + "=?";
+			}
+		} else if ( !s.data || !jsre.test(s.data) ) {
+			s.data = (s.data ? s.data + "&" : "") + (s.jsonp || "callback") + "=?";
+		}
+		s.dataType = "json";
+	}
+
+	// Build temporary JSONP function
+	if ( s.dataType === "json" && (s.data && jsre.test(s.data) || jsre.test(s.url)) ) {
+		jsonp = s.jsonpCallback || ("jsonp" + jsc++);
+
+		// Replace the =? sequence both in the query string and the data
+		if ( s.data ) {
+			s.data = (s.data + "").replace(jsre, "=" + jsonp + "$1");
+		}
+
+		s.url = s.url.replace(jsre, "=" + jsonp + "$1");
+
+		// We need to make sure
+		// that a JSONP style response is executed properly
+		s.dataType = "script";
+
+		// Handle JSONP-style loading
+		var customJsonp = window[ jsonp ], jsonpDone = false;
+
+		window[ jsonp ] = function( tmp ) {
+			if ( !jsonpDone ) {
+				jsonpDone = true;
+				if ( Object.prototype.toString.call( customJsonp ) === "[object Function]" ) {
+					customJsonp( tmp );
+
+				} else {
+					// Garbage collect
+					window[ jsonp ] = undefined;
+
+					try {
+						delete window[ jsonp ];
+					} catch( jsonpError ) {}
+				}
+
+				data = tmp;
+				helper.handleSuccess( s, xhr, status, data );
+				helper.handleComplete( s, xhr, status, data );
+
+				if ( head ) {
+					head.removeChild( script );
+				}
+				proxy && proxy.parentNode && proxy.parentNode.removeChild( proxy );
+			}
+		}
+	}
+
+	if ( s.dataType === "script" && s.cache === null ) {
+		s.cache = false;
+	}
+
+	if ( s.cache === false && type === "GET" ) {
+		var ts = ( new Date() ).getTime();
+
+		// try replacing _= if it is there
+		var ret = s.url.replace(rts, "$1_=" + ts);
+
+		// if nothing was replaced, add timestamp to the end
+		s.url = ret + ((ret === s.url) ? (rquery.test(s.url) ? "&" : "?") + "_=" + ts : "");
+	}
+
+	// If data is available, append data to url for get requests
+	if ( s.data && type === "GET" ) {
+		s.url += (rquery.test(s.url) ? "&" : "?") + s.data;
+	}
+
+	// Watch for a new set of requests
+	if ( s.global && helper.active++ === 0 ) {
+		//jQuery.event.trigger( "ajaxStart" );
+	}
+
+	// If we're requesting a remote document
+	// and trying to load JSON or Script with a GET
+	if ( s.dataType === "script" && type === "GET" && remote ) {
+		var inFrame = false;
+		if ( jsonp && s.async && !scriptAsync ) {
+			if( window._fragmentProxy ) {
+				proxy = document.createDocumentFragment();
+				head = proxy;
+			} else {
+				inFrame = true;
+				// Opera need url path in iframe
+				if( s.url.slice(0, 1) == "/" ) {
+					s.url = location.protocol + "//" + location.host + (location.port ? (":" + location.port) : "" ) + s.url;
+				}
+				else if( !/^https?:\/\//i.test( s.url ) ){
+					var href = location.href,
+				ex = /([^?#]+)\//.exec( href );
+				s.url = ( ex ? ex[1] : href ) + "/" + s.url;
+				}
+				s.url = s.url.replace( "=" + jsonp, "=parent." + jsonp );
+				proxy = document.createElement( "iframe" );
+				proxy.style.position = "absolute";
+				proxy.style.left = "-100px";
+				proxy.style.top = "-100px";
+				proxy.style.height = "1px";
+				proxy.style.width = "1px";
+				proxy.style.visibility = "hidden";
+				document.body.insertBefore( proxy, document.body.firstChild );
+				win = proxy.contentWindow;
+			}
+		}
+		function create() {
+			var doc = win.document;
+			head = head || doc.getElementsByTagName("head")[0] || doc.documentElement;
+			script = doc.createElement("script");
+			if ( s.scriptCharset ) {
+				script.charset = s.scriptCharset;
+			}
+			script.src = s.url;
+
+			if ( scriptAsync )
+				script.async = s.async;
+
+			// Handle Script loading
+			if ( jsonp ) {
+				// Attach handlers for all browsers
+				script.onload = script.onerror = script.onreadystatechange = function(e){
+					if( !jsonpDone && (!this.readyState || this.readyState === "loaded" || this.readyState === "complete") ) {
+						//error
+						jsonpDone = true;
+						helper.handleError( s, xhr, "error", "load error" );
+						if ( head && script.parentNode ) {
+							head.removeChild( script );
+						}
+						proxy && proxy.parentNode && proxy.parentNode.removeChild( proxy );
+					}
+				};
+			} else {
+				var done = false;
+
+				// Attach handlers for all browsers
+				script.onload = script.onreadystatechange = function() {
+					if ( !done && (!this.readyState ||
+						       this.readyState === "loaded" || this.readyState === "complete") ) {
+						done = true;
+					helper.handleSuccess( s, xhr, status, data );
+					helper.handleComplete( s, xhr, status, data );
+
+					// Handle memory leak in IE
+					script.onload = script.onreadystatechange = null;
+					if ( head && script.parentNode ) {
+						head.removeChild( script );
+					}
+					}
+				};
+			} 
+
+			// Use insertBefore instead of appendChild  to circumvent an IE6 bug.
+			// This arises when a base node is used (#2709 and #4378).
+			head.insertBefore( script, head.firstChild );
+		}
+		inFrame ? setTimeout( function() { create() }, 0 ) : create();
+
+		// We handle everything using the script element injection
+		return undefined;
+	}
+
+	var requestDone = false;
+
+	// Create the request object
+	var xhr = s.xhr();
+
+	if ( !xhr ) {
+		return;
+	}
+
+	// Open the socket
+	// Passing null username, generates a login popup on Opera (#2865)
+	if ( s.username ) {
+		xhr.open(type, s.url, s.async, s.username, s.password);
+	} else {
+		xhr.open(type, s.url, s.async);
+	}
+
+	// Need an extra try/catch for cross domain requests in Firefox 3
+	try {
+		// Set content-type if data specified and content-body is valid for this type
+		if ( (s.data != null && !noContent) || (origSettings && origSettings.contentType) ) {
+			xhr.setRequestHeader("Content-Type", s.contentType);
+		}
+
+		// Set the If-Modified-Since and/or If-None-Match header, if in ifModified mode.
+		if ( s.ifModified ) {
+			if ( helper.lastModified[s.url] ) {
+				xhr.setRequestHeader("If-Modified-Since", helper.lastModified[s.url]);
+			}
+
+			if ( helper.etag[s.url] ) {
+				xhr.setRequestHeader("If-None-Match", helper.etag[s.url]);
+			}
+		}
+
+		// Set header so the called script knows that it's an XMLHttpRequest
+		// Only send the header if it's not a remote XHR
+		if ( !remote ) {
+			xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+		}
+
+		// Set the Accepts header for the server, depending on the dataType
+		xhr.setRequestHeader("Accept", s.dataType && s.accepts[ s.dataType ] ?
+				     s.accepts[ s.dataType ] + ", */*; q=0.01" :
+					     s.accepts._default );
+	} catch( headerError ) {}
+
+	// Allow custom headers/mimetypes and early abort
+	if ( s.beforeSend && s.beforeSend.call(s.context, xhr, s) === false ) {
+		// Handle the global AJAX counter
+		if ( s.global && helper.active-- === 1 ) {
+			//jQuery.event.trigger( "ajaxStop" );
+		}
+
+		// close opended socket
+		xhr.abort();
+		return false;
+	}
+
+	if ( s.global ) {
+		helper.triggerGlobal( s, "ajaxSend", [xhr, s] );
+	}
+
+	// Wait for a response to come back
+	var onreadystatechange = xhr.onreadystatechange = function( isTimeout ) {
+		// The request was aborted
+		if ( !xhr || xhr.readyState === 0 || isTimeout === "abort" ) {
+			// Opera doesn't call onreadystatechange before this point
+			// so we simulate the call
+			if ( !requestDone ) {
+				helper.handleComplete( s, xhr, status, data );
+			}
+
+			requestDone = true;
+			if ( xhr ) {
+				xhr.onreadystatechange = helper.noop;
+			}
+
+			// The transfer is complete and the data is available, or the request timed out
+		} else if ( !requestDone && xhr && (xhr.readyState === 4 || isTimeout === "timeout") ) {
+			requestDone = true;
+			xhr.onreadystatechange = helper.noop;
+
+			status = isTimeout === "timeout" ?
+				"timeout" :
+					!helper.httpSuccess( xhr ) ?
+						"error" :
+							s.ifModified && helper.httpNotModified( xhr, s.url ) ?
+								"notmodified" :
+									"success";
+
+			var errMsg;
+
+			if ( status === "success" ) {
+				// Watch for, and catch, XML document parse errors
+				try {
+					// process the data (runs the xml through httpData regardless of callback)
+					data = helper.httpData( xhr, s.dataType, s );
+				} catch( parserError ) {
+					status = "parsererror";
+					errMsg = parserError;
+				}
+			}
+
+			// Make sure that the request was successful or notmodified
+			if ( status === "success" || status === "notmodified" ) {
+				// JSONP handles its own success callback
+				if ( !jsonp ) {
+					helper.handleSuccess( s, xhr, status, data );
+				}
+			} else {
+				helper.handleError( s, xhr, status, errMsg );
+			}
+
+			// Fire the complete handlers
+			if ( !jsonp ) {
+				helper.handleComplete( s, xhr, status, data );
+			}
+
+			if ( isTimeout === "timeout" ) {
+				xhr.abort();
+			}
+
+			// Stop memory leaks
+			if ( s.async ) {
+				xhr = null;
+			}
+		}
+	};
+
+	// Override the abort handler, if we can (IE 6 doesn't allow it, but that's OK)
+	// Opera doesn't fire onreadystatechange at all on abort
+	try {
+		var oldAbort = xhr.abort;
+		xhr.abort = function() {
+			// xhr.abort in IE7 is not a native JS function
+			// and does not have a call property
+			if ( xhr && oldAbort.call ) {
+				oldAbort.call( xhr );
+			}
+
+			onreadystatechange( "abort" );
+		};
+	} catch( abortError ) {}
+
+	// Timeout checker
+	if ( s.async && s.timeout > 0 ) {
+		setTimeout(function() {
+			// Check to see if the request is still happening
+			if ( xhr && !requestDone ) {
+				onreadystatechange( "timeout" );
+			}
+		}, s.timeout);
+	}
+
+	// Send the data
+	try {
+		xhr.send( noContent || s.data == null ? null : s.data );
+
+	} catch( sendError ) {
+		helper.handleError( s, xhr, null, sendError );
+
+		// Fire the complete handlers
+		helper.handleComplete( s, xhr, status, data );
+	}
+
+	// firefox 1.5 doesn't fire statechange for sync requests
+	if ( !s.async ) {
+		onreadystatechange();
+	}
+
+	// return XMLHttpRequest to allow aborting the request etc.
+	return xhr;
+}
 
 function param( a ) {
 	var s = [];
@@ -248,290 +675,207 @@ function param( a ) {
 	return a;
 }
 
-var jsc = now(),
-	rquery = /\?/,
-	rts = /(\?|&)_=.*?(&|$)/,
-	rurl = /^(\w+:)?\/\/([^\/?#]+)/,
-	ajaxSettings = {
-		url: location.href,
-		global: true,
-		type: "GET",
-		contentType: "application/x-www-form-urlencoded",
-		processData: true,
-		async: true,
-		/*
-		timeout: 0,
-		data: null,
-		username: null,
-		password: null,
-		*/
-		// Create the request object; Microsoft failed to properly
-		// implement the XMLHttpRequest in IE7, so we use the ActiveXObject when it is available
-		// This function can be overriden by calling ajaxSetup
-		xhr: function(){
-			return window.ActiveXObject ?
-				new ActiveXObject("Microsoft.XMLHTTP") :
-				new XMLHttpRequest();
-		},
-		accepts: {
-			xml: "application/xml, text/xml",
-			html: "text/html",
-			script: "text/javascript, application/javascript",
-			json: "application/json, text/javascript",
-			text: "text/plain",
-			_default: "*/*"
+ajax.param = param;
+
+var helper = {
+	noop: function() {},
+	// Counter for holding the number of active queries
+	active: 0,
+
+	// Last-Modified header cache for next request
+	lastModified: {},
+	etag: {},
+
+	handleError: function( s, xhr, status, e ) {
+		// If a local callback was specified, fire it
+		if ( s.error ) {
+			s.error.call( s.context, xhr, status, e );
+		}
+
+		// Fire the global callback
+		if ( s.global ) {
+			helper.triggerGlobal( s, "ajaxError", [xhr, s, e] );
 		}
 	},
-	// Last-Modified header cache for next request
-	lastModified = {},
-	etag = {};
 
-function handleError( s, xhr, status, e ) {
-	// If a local callback was specified, fire it
-	if ( s.error ) {
-		s.error.call( s.context || window, xhr, status, e );
-	}
-}
-// Determines if an XMLHttpRequest was successful or not
-function httpSuccess( xhr ) {
-	try {
-		// IE error sometimes returns 1223 when it should be 204 so treat it as success, see #1450
-		return !xhr.status && location.protocol === "file:" ||
-			// Opera returns 0 when status is 304
-			( xhr.status >= 200 && xhr.status < 300 ) ||
-			xhr.status === 304 || xhr.status === 1223 || xhr.status === 0;
-	} catch(e){}
-	return false;
-}
-
-// Determines if an XMLHttpRequest returns NotModified
-function httpNotModified( xhr, url ) {
-	var _lastModified = xhr.getResponseHeader("Last-Modified"),
-		_etag = xhr.getResponseHeader("Etag");
-
-	if ( _lastModified ) {
-		lastModified[url] = _lastModified;
-	}
-	if ( _etag ) {
-		etag[url] = _etag;
-	}
-	// Opera returns 0 when status is 304
-	return xhr.status === 304 || xhr.status === 0;
-}
-
-function httpData( xhr, type, s ) {
-	var ct = xhr.getResponseHeader("content-type"),
-		xml = type === "xml" || !type && ct && ct.indexOf("xml") >= 0,
-		data = xml ? xhr.responseXML : xhr.responseText;
-
-	if ( xml && data.documentElement.nodeName === "parsererror" ) {
-		throw "parsererror";
-	}
-	// Allow a pre-filtering function to sanitize the response
-	// s is checked to keep backwards compatibility
-	if ( s && s.dataFilter ) {
-		data = s.dataFilter( data, type );
-	}
-
-	// The filter can actually parse the response
-	if ( typeof data === "string" ) {
-		// Get the JavaScript object, if JSON is used.
-		if ( type === "json" ) {
-			if ( typeof JSON === "object" && JSON.parse ) {
-				data = JSON.parse( data );
-			} else {
-				data = (new Function("return " + data))();
-			}
-		}
-	}
-
-	return data;
-}
-
-
-function ajaxSetup( settings ) {
-	extend( ajaxSettings, settings );
-}
-function ajax( s ) {
-	// Extend the settings, but re-extend 's' so that it can be
-	// checked again later (in the test suite, specifically)
-	s = extend(true, s, extend(true, {}, ajaxSettings, s));
-	
-	var status, data,
-		callbackContext = s.context || window,
-		type = s.type.toUpperCase();
-
-	// convert data if not already a string
-	if ( s.data && s.processData && typeof s.data !== "string" ) {
-		s.data = param(s.data);
-	}
-	if ( s.cache === false && type === "GET" ) {
-		var ts = now();
-
-		// try replacing _= if it is there
-		var ret = s.url.replace(rts, "$1_=" + ts + "$2");
-
-		// if nothing was replaced, add timestamp to the end
-		s.url = ret + ((ret === s.url) ? (rquery.test(s.url) ? "&" : "?") + "_=" + ts : "");
-	}
-
-	// If data is available, append data to url for get requests
-	if ( s.data && type === "GET" ) {
-		s.url += (rquery.test(s.url) ? "&" : "?") + s.data;
-	}
-
-	var requestDone = false;
-
-	// Create the request object
-	var xhr = s.xhr();
-
-	// Open the socket
-	// Passing null username, generates a login popup on Opera (#2865)
-	if ( s.username ) {
-		xhr.open(type, s.url, s.async, s.username, s.password);
-	} else {
-		xhr.open(type, s.url, s.async);
-	}
-
-	// Need an extra try/catch for cross domain requests in Firefox 3
-	try {
-		// Set the correct header, if data is being sent
-		if ( s.data ) {
-			xhr.setRequestHeader("Content-Type", s.contentType);
-		}
-
-			// Set the If-Modified-Since and/or If-None-Match header, if in ifModified mode.
-			if ( s.ifModified ) {
-				if ( lastModified[s.url] ) {
-					xhr.setRequestHeader("If-Modified-Since", lastModified[s.url]);
-				}
-
-				if ( etag[s.url] ) {
-					xhr.setRequestHeader("If-None-Match", etag[s.url]);
-				}
-			}
-
-		// Set header so the called script knows that it's an XMLHttpRequest
-		xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-
-		// Set the Accepts header for the server, depending on the dataType
-		xhr.setRequestHeader("Accept", s.dataType && s.accepts[ s.dataType ] ?
-			s.accepts[ s.dataType ] + ", */*" :
-			s.accepts._default );
-	} catch(e){}
-
-	// Allow custom headers/mimetypes and early abort
-	if ( s.beforeSend && s.beforeSend.call(callbackContext, xhr, s) === false ) {
-		// close opended socket
-		xhr.abort();
-		return false;
-	}
-	// Wait for a response to come back
-	var onreadystatechange = function(isTimeout){
-		// The request was aborted, clear the interval
-		if ( !xhr || xhr.readyState === 0 ) {
-			if ( ival ) {
-				// clear poll interval
-				clearInterval( ival );
-				ival = null;
-			}
-
-		// The transfer is complete and the data is available, or the request timed out
-		} else if ( !requestDone && xhr && (xhr.readyState === 4 || isTimeout === "timeout") ) {
-			requestDone = true;
-
-			// clear poll interval
-			if (ival) {
-				clearInterval(ival);
-				ival = null;
-			}
-
-			status = isTimeout === "timeout" ?
-				"timeout" :
-				!httpSuccess( xhr ) ?
-					"error" :
-					s.ifModified && httpNotModified( xhr, s.url ) ?
-						"notmodified" :
-						"success";
-
-			if ( status === "success" ) {
-				// Watch for, and catch, XML document parse errors
-				try {
-					// process the data (runs the xml through httpData regardless of callback)
-					data = httpData( xhr, s.dataType, s );
-				} catch(e) {
-					status = "parsererror";
-				}
-			}
-
-			// Make sure that the request was successful or notmodified
-			if ( status === "success" || status === "notmodified" ) {
-				success();
-			} else {
-				handleError(s, xhr, status);
-			}
-
-			// Fire the complete handlers
-			complete();
-
-			if ( isTimeout ) {
-				xhr.abort();
-			}
-
-			// Stop memory leaks
-			if ( s.async ) {
-				xhr = null;
-			}
-		}
-	};
-
-	if ( s.async ) {
-		// don't attach the handler to the request, just poll it instead
-		var ival = setInterval(onreadystatechange, 13);
-
-		// Timeout checker
-		if ( s.timeout > 0 ) {
-			setTimeout(function(){
-				// Check to see if the request is still happening
-				if ( xhr && !requestDone ) {
-					onreadystatechange( "timeout" );
-				}
-			}, s.timeout);
-		}
-	}
-
-	// Send the data
-	try {
-		xhr.send( type === "POST" || type === "PUT" ? s.data : null );
-	} catch(e) {
-		handleError(s, xhr, null, e);
-	}
-
-	// firefox 1.5 doesn't fire statechange for sync requests
-	if ( !s.async ) {
-		onreadystatechange();
-	}
-
-	function success(){
+	handleSuccess: function( s, xhr, status, data ) {
 		// If a local callback was specified, fire it and pass it the data
 		if ( s.success ) {
-			s.success.call( callbackContext, data, status );
+			s.success.call( s.context, data, status, xhr );
 		}
-	}
 
-	function complete(){
+		// Fire the global callback
+		if ( s.global ) {
+			helper.triggerGlobal( s, "ajaxSuccess", [xhr, s] );
+		}
+	},
+
+	handleComplete: function( s, xhr, status ) {
 		// Process result
 		if ( s.complete ) {
-			s.complete.call( callbackContext, xhr, status);
+			s.complete.call( s.context, xhr, status );
+		}
+
+		// The request was completed
+		if ( s.global ) {
+			helper.triggerGlobal( s, "ajaxComplete", [xhr, s] );
+		}
+
+		// Handle the global AJAX counter
+		if ( s.global && helper.active-- === 1 ) {
+			//jQuery.event.trigger( "ajaxStop" );
+		}
+	},
+
+	triggerGlobal: function( s, type, args ) {
+		//(s.context && s.context.url == null ? jQuery(s.context) : jQuery.event).trigger(type, args);
+	},
+
+	// Determines if an XMLHttpRequest was successful or not
+	httpSuccess: function( xhr ) {
+		try {
+			// IE error sometimes returns 1223 when it should be 204 so treat it as success, see #1450
+			return !xhr.status && location.protocol === "file:" ||
+				xhr.status >= 200 && xhr.status < 300 ||
+					xhr.status === 304 || xhr.status === 1223;
+		} catch(e) {}
+
+		return false;
+	},
+
+	// Determines if an XMLHttpRequest returns NotModified
+	httpNotModified: function( xhr, url ) {
+		var lastModified = xhr.getResponseHeader("Last-Modified"),
+		etag = xhr.getResponseHeader("Etag");
+
+		if ( lastModified ) {
+			helper.lastModified[url] = lastModified;
+		}
+
+		if ( etag ) {
+			helper.etag[url] = etag;
+		}
+
+		return xhr.status === 304;
+	},
+
+	httpData: function( xhr, type, s ) {
+		var ct = xhr.getResponseHeader("content-type") || "",
+		xml = type === "xml" || !type && ct.indexOf("xml") >= 0,
+		data = xml ? xhr.responseXML : xhr.responseText;
+
+		if ( xml && data.documentElement.nodeName === "parsererror" ) {
+			helper.error( "parsererror" );
+		}
+
+		// Allow a pre-filtering function to sanitize the response
+		// s is checked to keep backwards compatibility
+		if ( s && s.dataFilter ) {
+			data = s.dataFilter( data, type );
+		}
+
+		// The filter can actually parse the response
+		if ( typeof data === "string" ) {
+			// Get the JavaScript object, if JSON is used.
+			if ( type === "json" || !type && ct.indexOf("json") >= 0 ) {
+				data = data ? 
+					( window.JSON && window.JSON.parse ?
+					 window.JSON.parse( data ) :
+						 (new Function("return " + data))() ) : 
+							 data;
+
+				// If the type is "script", eval it in global context
+			} else if ( type === "script" || !type && ct.indexOf("javascript") >= 0 ) {
+				//jQuery.globalEval( data );
+				if ( data && rnotwhite.test(data) ) {
+					// Inspired by code by Andrea Giammarchi
+					// http://webreflection.blogspot.com/2007/08/global-scope-evaluation-and-dom.html
+					var head = document.getElementsByTagName("head")[0] || document.documentElement,
+					script = document.createElement("script");
+					script.type = "text/javascript";
+					try {
+						script.appendChild( document.createTextNode( data ) );
+					} catch( e ) {
+						script.text = data;
+					}
+
+					// Use insertBefore instead of appendChild to circumvent an IE6 bug.
+					// This arises when a base node is used (#2709).
+					head.insertBefore( script, head.firstChild );
+					head.removeChild( script );
+				}
+			}
+		}
+
+		return data;
+	}
+
+};
+
+
+ajax.settings = {
+	url: location.href,
+	global: true,
+	type: "GET",
+	contentType: "application/x-www-form-urlencoded",
+	processData: true,
+	async: true,
+/*
+* timeout: 0,
+* data: null,
+* username: null,
+* password: null,
+* traditional: false,
+* */
+	// This function can be overriden by calling ajax.setup
+	xhr: function() {
+		return new window.XMLHttpRequest();
+	},
+	accepts: {
+		xml: "application/xml, text/xml",
+		html: "text/html",
+		script: "text/javascript, application/javascript",
+		json: "application/json, text/javascript",
+		text: "text/plain",
+		_default: "*/*"
+	}
+};
+
+ajax.setup = function( settings ) {
+	if ( settings ) {
+		for( var key in settings ) {
+			ajax.settings[ key ] = settings[ key ];
 		}
 	}
-	// return XMLHttpRequest to allow aborting the request etc.
-	return xhr;
 }
+
+/*
+* Create the request object; Microsoft failed to properly
+* implement the XMLHttpRequest in IE7 (can't request local files),
+* so we use the ActiveXObject when it is available
+* Additionally XMLHttpRequest can be disabled in IE7/IE8 so
+* we need a fallback.
+*/
+if ( window.ActiveXObject ) {
+	ajax.settings.xhr = function() {
+		if ( window.location.protocol !== "file:" ) {
+			try {
+				return new window.XMLHttpRequest();
+			} catch(xhrError) {}
+		}
+
+		try {
+			return new window.ActiveXObject("Microsoft.XMLHTTP");
+		} catch(activeError) {}
+	};
+}
+return ajax;
+} )();
+
 
 /**
 * 
-* No dependencies.
+* JSONP
 *
 * Safari and chrome not support async opiton, it aways async.
 *
@@ -563,214 +907,7 @@ function ajax( s ) {
 * 	prefect onload and onerror event.
 *
 */
-var jsonpSettings = {
-	url: location.href,
-	timeout: 5000,
-	jsonp:"callback",
-	async: false
-};
 
-var jsonpSupport = window.jsonpSupport = {
-	//Firefox 3.6 and chrome 6 support script async attribute.
-	async: typeof( document.createElement("script").async ) == "boolean",
-	//Opera may not trigger events when script load. 
-	events: false,
-	// Webkit run script async when create script by createElement.
-	defaultAsync: false,
-	// IE can async load script in fragment.
-	fragmentProxy: false
-};
-(function(){
-	var ua = navigator.userAgent.toLowerCase();
-	jsonpSupport.events = !/(opera)(?:.*version)?[ \/]([\w.]+)/.exec( ua );
-	jsonpSupport.defaultAsync = !!/(webkit)[ \/]([\w.]+)/.exec( ua );
-/*
-var head = document.getElementsByTagName("head")[0] || document.createElement,
-script = document.createElement("script"),
-script2 = document.createElement("script"),
-text = "window.jsonpSupport.defaultAsync = false;";
-script.src = "javascript:false";
-script.onload = function(e) {
-jsonpSupport.defaultAsync = true;
-jsonpSupport.events = true;
-};                
-
-script.onerror = function(e) {
-jsonpSupport.defaultAsync = true;
-jsonpSupport.events = true;
-};               
-script.onreadystatechange = function() {
-// ie defaultAsync = true
-jsonpSupport.events = true;
-};
-head.appendChild( script );
-try{
-script2.appendChild( document.createTextNode( text ) );
-} catch( e ){
-script2.text = text;
-}
-head.appendChild( script2 );
-setTimeout(function(){
-script.onload = script.onerror = script.onreadystatechange = null;
-head.removeChild( script );
-head.removeChild( script2 );
-head = script = script2 = null;
-}, 1000);
-*/
-	//Check fragment proxy
-	var frag = document.createDocumentFragment(),
-	script3 = document.createElement('script');
-	text = "window.jsonpSupport.fragmentProxy = true";
-	try{
-		script3.appendChild( document.createTextNode( text ) );
-	} catch( e ){
-		script3.text = text;
-	}
-	frag.appendChild( script3 );
-	frag = script3 = null;
-})();
-
-//setTimeout(function(){
-//alert( JSON.stringify( jsonpSupport ) );
-//alert( !jsonpSupport.fragmentProxy && !jsonpSupport.defaultAsync && !jsonpSupport.async );
-//}, 300);
-
-function jsonp(s){
-	s = extend({}, jsonpSettings, s);
-	var data = "",
-	r20 = /%20/g,
-	callbackContext = s.context || window,
-	jsonp = "jsonp" + jsc++,
-	jsonpError = jsonp + "error",
-	script,
-	errorScript,
-	win = window,
-	head,
-	proxy,
-	inIframe = s.async && !jsonpSupport.fragmentProxy && !jsonpSupport.defaultAsync && !jsonpSupport.async;
-	if ( typeof s.data == "object" ) {
-		var ar = [];
-		for (var key in s.data) {
-			ar[ ar.length ] = encodeURIComponent(key) + '=' + encodeURIComponent(s.data[key]);
-		}
-		// Serialize data
-		data = data + ar.join("&").replace(r20, "+");
-	} else {
-		data = data + s.data;
-	}
-	data = (data ? (data + "&") : "") + (s.jsonp || "callback") + "=" + (inIframe ? "parent." : "" ) + jsonp;
-	s.url += (/\?/.test( s.url ) ? "&" : "?") + data;
-
-	// Handle Script loading
-	var done = false;
-	window[ jsonp ] = function( tmp ) {
-		s.success && s.success.call( callbackContext, tmp, "success" );
-		destroy();
-	};
-
-	//Handle script error callback, the script will run once.
-	window[ jsonpError ] = function(tmp){
-		if ( !done ) {
-			error( "error" );
-			destroy();
-		}
-	};
-
-	// Handle timeout
-	if ( s.timeout > 0 ) {
-		setTimeout( function() {
-			if ( !done ){
-				error( "timeout" );
-				destroy();
-				// The script may be loading.
-				window[ jsonp ] = jsonpEmptyFunction;
-			}
-		}, s.timeout );
-	}
-	if( s.async && !jsonpSupport.defaultAsync && jsonpSupport.fragmentProxy ) {
-		proxy = document.createDocumentFragment();
-		head = proxy;
-		//proxy[ jsonp ] = window[ jsonp ];
-		//proxy.appendChild( script );
-	}
-	if ( inIframe ) {
-		// Opera need url path in iframe
-		var location = window.location;
-		if( s.url.slice(0, 1) == "/" ) {
-			s.url = location.protocol + "//" + location.host + (location.port ? (":" + location.port) : "" ) + s.url;
-		}
-		else if( !/^https?:\/\//i.test( s.url ) ){
-			var href = location.href,
-		ex = /([^?#]+)\//.exec( href );
-		s.url = ( ex ? ex[1] : href ) + "/" + s.url;
-		}
-		proxy = document.createElement( "iframe" );
-		proxy.style.position = "absolute";
-		proxy.style.left = "-100px";
-		proxy.style.top = "-100px";
-		proxy.style.height = "1px";
-		proxy.style.width = "1px";
-		proxy.style.visibility = "hidden";
-		document.body.appendChild( proxy );
-		win = proxy.contentWindow;
-	}
-	inIframe ? setTimeout( function() { create() }, 0 ) : create();
-	return undefined;
-	function create() {
-		// We handle everything using the script element injection
-		var doc = win.document;
-		head = head || doc.getElementsByTagName("head")[0] || doc.documentElement;
-		script = doc.createElement("script");
-		script.src = s.url;
-		if ( jsonpSupport.async ) {
-			script.async = s.async;
-		}
-		if ( s.scriptCharset ) {
-			script.charset = s.scriptCharset;
-		}
-		// Attach handlers for all browsers
-		script.onload = script.onerror = script.onreadystatechange = function(e){
-			if(!done && (!this.readyState || this.readyState === "loaded" || this.readyState === "complete")){
-				//error
-				error("error");
-				destroy();
-			}
-		};
-		// Use insertBefore instead of appendChild  to circumvent an IE6 bug.
-		head.insertBefore( script, head.firstChild );
-
-		// Call error script When the script has not events and run sync.
-		if ( !jsonpSupport.defaultAsync && !jsonpSupport.events ) {
-			var sc = doc.createElement("script");
-			var text = "try{" + ( inIframe ? "parent." : "" ) + jsonpError + "()}catch(e){};";
-			sc.appendChild( document.createTextNode( text ) );
-			head.insertBefore( sc, head.firstChild );
-			//head.removeChild( sc );
-			head = sc = null;
-		}
-	}
-
-	function destroy(){
-		done = true;
-		// Garbage collect
-		window[ jsonp ] = undefined;
-		try{ delete window[ jsonp ]; } catch(e){}
-		window[ jsonpError ] = undefined;
-		try{ delete window[ jsonpError ]; } catch(e){}
-		// Handle memory leak in IE
-		script.onload = script.onreadystatechange = null;
-		script.parentNode && script.parentNode.removeChild( script );
-		proxy && proxy.parentNode && proxy.parentNode.removeChild( proxy );
-		script = proxy = head = null;
-	}
-
-	function error( status ) {
-		s.error && s.error.call( callbackContext, status );
-	}
-}
-
-function jsonpEmptyFunction() {
-}
 
 /** HTML5 contain JSON */
 
@@ -818,189 +955,146 @@ if ( window.JSON ) {
 	} )();
 }
 
-/*连接connection 
-* Depends:
-* 	core.js
-* 	ajax.js
+/*!
+* comet.js v0.1
 *
- 只负责长连接. 不处理数据 不自动重连 无数据发送成功事件 只实现功能 不负责业务处理
- connection:
- attributes：
+* http://github.com/webim/comet.js
+*
+* Copyright (c) 2010 Hidden
+* Released under the MIT, BSD, and GPL Licenses.
+*
+* Depends:
+* 	ClassEvent.js http://github.com/webim/ClassEvent.js
+* 	ajax.js http://github.com/webim/ajax.js
+*
+*/
 
- connected //是否连接中 readonly
-
- methods:
- connect(options) //开始连接 成功后触发connect事件 错误触发error
- close() 关闭连接 不触发close事件
- send(msg) 发送数据 错误则触发sendError事件
-
- events: //
- //ready
- data //接收数据数据
- connect //连接成功
- close //连接关闭(曾经连接成功)    服务器关闭触发此事件  本地调用close()不触发此事件,连接中途出错 超时等等 需重新建立连接 调用connect(options)
- error //不能连接 缺少配置，安全限制等等
- (event,text:'')
- sendError //发送消息出错
- sendSuccess //发送消息成功
-
- */
-/* comet */
-function comet(element, options){
-        var self = this;
-        self._setting();
-        self.options = {
-                jsonp: false,
-                server: null,
-                ticket: null,
-                domain: null,
-		timeout: 40000,
-                url: {
-                        send: null
-                }
-        };
-        extend(self.options, options);
+function comet( url ) {
+	var self = this;
+	self.URL = url;
+	self._setting();
+	self._connect();
 }
-extend(comet.prototype, objectExtend, {
-        _setting: function(){
-                var self = this;
-                self.connected = false;//是否已连接 只读属性
-                self._connecting = false; //设置连接开关避免重复连接
-                self._onPolling = false; //避免重复polling
-                self._pollTimer = null;
-                self._pollingTimes = 0; //polling次数 第一次成功后 connected = true; 
-                self._failTimes = 0;//polling失败累加2次判定服务器关闭连接
-        },
-        connect: function(options){
-                //连接
-                var self = this;
-                extend(self.options, options);
-                if (self._connecting) 
-                return self;
-                self._connecting = true;
-                var options = self.options, error = false, text = [];
-		/*
-                each(['server', 'ticket', 'domain'], function(n, v){
-                        if (!options[v]) {
-                                text.push(v);
-                                text.push(' required.');
-                                error = true;
-                        }
-                });
-                if (error) {
-                        self._onError('error', text.join(' '));
-                        return self;
-                }
-		*/
 
-                if (!self._onPolling){
-                        window.setTimeout(function(){
-                                self._startPolling();
-                        }, 300);
-                }
-                return self;
-        },
-        close: function(){
-                var self = this;
-                if (self._pollTimer) 
-                clearTimeout(self._pollTimer);
-                self._setting();
-                return self;
-        },
-        _onConnect: function(){
-                var self = this;
-                self.connected = true;
-                self.trigger('connect','success');
-        },
-        _onClose: function(m){
-                var self = this;
-                self._setting();
-                self.trigger('close',[m]);
-        },
-        _onData: function(data){
-                var self = this;
-                self.trigger('data', data);
-        },
-        _onError: function(text){
-                var self = this;
-                self._setting();
-                self.trigger('error', text);
-        },
-        _startPolling: function(){
-
-                var self = this, options = self.options;
-                self._onPolling = true;
-                self._pollingTimes++;
-                var url = options.server;
-                var data = {
-                //        callback: "airtest", //fortest
-                        domain: options.domain,
-                        ticket: options.ticket
-                };
-                var o = {
-                        url: url,
-                        data: data,
-                        dataType: 'json', //fortest need show
-                        timeout: options.timeout,
-                        cache: false,
-                        context: self,
-                        success: self._onPollSuccess,
-                        error: self._onPollError
-                };
-                if(options.jsonp){
-                	extend( o, {
-                	        timeout: options.timeout,
-                	        dataType: 'jsonp',
-				//JSONP with async request, Fix bug http://github.com/webim/webim-js/issues/issue/6
-				async: true,
-                	        jsonp: 'callback'
-                	} );
-			jsonp(o);
+comet.prototype = {
+	readyState: 0,
+	send: function( data ) {
+	},
+	_setting: function(){
+		var self = this;
+		self.readyState = comet.CLOSED;//是否已连接 只读属性
+		self._connecting = false; //设置连接开关避免重复连接
+		self._onPolling = false; //避免重复polling
+		self._pollTimer = null;
+		self._pollingTimes = 0; //polling次数 第一次成功后 connected = true; 
+		self._failTimes = 0;//polling失败累加2次判定服务器关闭连接
+	},
+	_connect: function(){
+		//连接
+		var self = this;
+		if ( self._connecting ) 
+			return self;
+		self.readyState = comet.CONNECTING;
+		self._connecting = true;
+		if ( !self._onPolling ) {
+			window.setTimeout( function() {
+				self._startPolling();
+			}, 300 );
 		}
-		else
-                ajax(o);
-        },
-
-        _onPollSuccess: function(d){
-                var self = this;
-                self._onPolling = false;
-		if (self._connecting){
-			if(!d || !d.status){
+		return self;
+	},
+	close: function(){
+		var self = this;
+		if ( self._pollTimer ) 
+			clearTimeout( self._pollTimer );
+		self._setting();
+		return self;
+	},
+	_onConnect: function() {
+		var self = this;
+		self.readyState = comet.OPEN;
+		self.d( 'open', 'success' );
+	},
+	_onClose: function( m ) {
+		var self = this;
+		self._setting();
+		self.d( 'close', [ m ] );
+	},
+	_onData: function(data) {
+		var self = this;
+		self.d( 'message', [ data ] );
+	},
+	_onError: function( text ) {
+		var self = this;
+		self._setting();
+		self.d( 'error', [ text ] );
+	},
+	_startPolling: function() {
+		var self = this;
+		if ( !self._connecting )
+			return;
+		self._onPolling = true;
+		self._pollingTimes++;
+		ajax( {
+			url: self.URL,
+			dataType: 'jsonp',
+			cache: false,
+			context: self,
+			success: self._onPollSuccess,
+			error: self._onPollError
+		} );
+	},
+	_onPollSuccess: function(d){
+		var self = this;
+		self._onPolling = false;
+		if ( self._connecting ) {
+			if( !d ) {
 				return self._onError('error data');
 			}else{
-				//d = window["eval"](d.replace("airtest","")); //fortest
-				if (self._pollingTimes == 1){
+				if ( self._pollingTimes == 1 ) {
 					self._onConnect();
 				}
-				self._onData(d);
+				self._onData( d );
 				self._failTimes = 0;//连接成功 失败累加清零
 				self._pollTimer = window.setTimeout(function(){
 					self._startPolling();
 				}, 200);
 			}
 		}
-        },
-        _onPollError: function( m ) {
-                var self = this;
-                self._onPolling = false;
-                if (!self._connecting) 
-                return;//已断开连接
-                self._failTimes++;
-                if (self._pollingTimes == 1) 
-                self._onError('can not connect.');
-                else{
-                        if (self._failTimes > 1) {
-                                //服务器关闭连接
-                                self._onClose(m);
-                        }
-                        else {
-                                self._pollTimer = window.setTimeout(function(){
-                                        self._startPolling();
-                                }, 200);
-                        }
-                }
-        }
-});
+	},
+	_onPollError: function( m ) {
+		var self = this;
+		self._onPolling = false;
+		if (!self._connecting) 
+			return;//已断开连接
+		self._failTimes++;
+		if (self._pollingTimes == 1) 
+			self._onError('can not connect.');
+		else{
+			if (self._failTimes > 1) {
+				//服务器关闭连接
+				self._onClose( m );
+			}
+			else {
+				self._pollTimer = window.setTimeout(function(){
+					self._startPolling();
+				}, 200);
+			}
+		}
+	}
+};
+
+//The connection has not yet been established.
+comet.CONNECTING = 0;
+
+//The connection is established and communication is possible.
+comet.OPEN = 1;
+
+//The connection has been closed or could not be opened.
+comet.CLOSED = 2;
+
+//Make the class work with custom events
+ClassEvent.on( comet );
 /*
  * Cookie plugin
  * Copyright (c) 2006 Klaus Hartl (stilbuero.de)
@@ -1059,7 +1153,7 @@ function cookie(name, value, options) {
         options = options || {};
         if (value === null) {
             value = '';
-            options = extend({}, options); // clone object since it's unexpected behavior if the expired property were changed
+            //options = extend({}, options); // clone object since it's unexpected behavior if the expired property were changed
             options.expires = -1;
         }
         var expires = '';
@@ -1096,136 +1190,94 @@ function cookie(name, value, options) {
         return cookieValue;
     }
 }
-//log
-//log.enable();
-//log.disable();
-//log(log,method);
-var _logable = true;
-function log(str, method){
-	if (!_logable) 
-		return;
-	var d = new Date(),  time = ['[', d.getHours(), ':', d.getMinutes(), ':', d.getSeconds(), '-', d.getMilliseconds(), ']'].join(""), msg = time + method + JSON.stringify(str);
-	window.console && window.console.log(time, method, str); 
-	//cosole.log("%s: %o",msg,this);
-	var log = document.getElementById("webim-log");
-	if ( window.runtime && window.air ) {
-		window.air.trace( msg ); //air
-		window.air.Introspector && window.air.Introspector.Console.log( msg );
-	}
-	if ( log ) { 
-		var m = document.createElement("P");
-		m.innerHTML = msg;
-		log.appendChild(m);
-	}
-	//log.scrollTop(log.get(0).scrollHeight);
-}
-log.enable = function(){
-	_logable = true;
-};
-log.disable = function(){
-	_logable = false;
-};
-/*
-*
-* Depends:
-* 	core.js
-*
-* options:
-*
-* attributes:
-* 	data
-* 	status
-* 	setting
-* 	history
-* 	buddy
-* 	connection
-*
-*
-* methods:
-* 	online
-* 	offline
-* 	autoOnline
-* 	sendMsg
-* 	sendStatus
-* 	setStranger
-*
-* events:
-* 	ready
-* 	go
-* 	stop
-*
-* 	message
-* 	presence
-* 	status
-*
-* 	sendMsg
-*/
+function log() {
 
+	var d = new Date(),  time = ['[', d.getHours(), ':', d.getMinutes(), ':', d.getSeconds(), '-', d.getMilliseconds(), ']'].join("");
+	if ( window && window.console ) {
+		window.console.log.apply( null, arguments );
+	} else if ( window && window.runtime && window.air && window.air.Introspector ) {
+		window.air.Introspector.Console.log.apply( null, arguments );
+	}
 
-function webim(element, options){
-	var self = this;
-	self.options = extend({}, webim.defaults, options);
-	this._init(element, options);
 }
 
-extend(webim.prototype, objectExtend,{
-	_init: function(){
+function webim( element, options ) {
+	this.options = extend( {}, webim.defaults, options );
+	this._init( element, options );
+}
+
+ClassEvent.on( webim );
+
+extend(webim.prototype, {
+	_init: function() {
 		var self = this, options = self.options;
 		//Default user status info.
-		var user = {presence: 'offline', show: 'unavailable'};
-		if(options.jsonp)
-			self.request = jsonp;
-		else
-			self.request = ajax;
-		self.data = {user: user};
+		self.data = { 
+			user: {
+				presence: 'offline', 
+				show: 'unavailable'
+			}
+		};
 		self.status = new webim.status();
-		self.setting = new webim.setting(null, {jsonp: options.jsonp});
-		self.buddy = new webim.buddy(null, {active: self.status.get("b"), jsonp: options.jsonp});
-		self.room = new webim.room(null, {user: user, jsonp: options.jsonp});
-		self.history = new webim.history(null, {user: user, jsonp: options.jsonp});
-		self.connection = new comet( null, { jsonp: window.location.protocol == "app:" ? false : true } );
+		self.setting = new webim.setting();
+		self.buddy = new webim.buddy();
+		self.room = new webim.room(null, self.data );
+		self.history = new webim.history(null, self.data );
 		self._initEvents();
-		//self.online();
 	},
-	user: function(info){
-		extend(this.data.user, info);
+	_createConnect: function() {
+		var self = this;
+		var url = self.data.connection;
+		url = url.server + ( /\?/.test( url ) ? "&" : "?" ) + ajax.param( { ticket: url.ticket, domain: url.domain } );
+		self.connection = new comet( url );
+		self.connection.a( "connect",function( e, data ) {
+		}).a( "message", function( e, data ) {
+			self.handle( data );
+		}).a( "error", function( e, data ){
+			self._stop( "connect", "Connect Error" );
+		}).a( "close", function( e, data ) {
+			self._stop( "connect", "Disconnect" );
+		});
 	},
-	_ready: function(post_data){
+	setUser: function( info ) {
+		extend( this.data.user, info );
+	},
+	_ready: function( post_data ) {
 		var self = this;
 		self._unloadFun = window.onbeforeunload;
 		window.onbeforeunload = function(){
-			self._refresh();
+			self._deactivate();
 		};
-		self.trigger("ready", [post_data]);
+		self.d( "beforeOnline", [ post_data ] );
 	},
-	_go: function(){
+	_go: function() {
 		var self = this, data = self.data, history = self.history, buddy = self.buddy, room = self.room;
-		history.option("userInfo", data.user);
+		history.options.userInfo = data.user;
 		var ids = [];
-		each(data.buddies, function(n, v){
-			history.init("unicast", v.id, v.history);
+		each( data.buddies, function(n, v) {
+			history.init( "unicast", v.id, v.history );
 		});
-		buddy.handle(data.buddies);
+		buddy.set( data.buddies );
 		//rooms
-		each(data.rooms, function(n, v){
-			history.init("multicast", v.id, v.history);
+		each( data.rooms, function(n, v) {
+			history.init( "multicast", v.id, v.history );
 		});
 		//blocked rooms
 		var b = self.setting.get("blocked_rooms"), roomData = data.rooms;
 		isArray(b) && roomData && each(b,function(n,v){
 			roomData[v] && (roomData[v].blocked = true);
 		});
-		room.handle(roomData);
+		room.set(roomData);
 		room.options.ticket = data.connection.ticket;
-		self.trigger("go",[data]);
-		self.connection.connect(data.connection);
+		self.d("online",[data]);
+		self._createConnect();
 		//handle new messages at last
 		var n_msg = data.new_messages;
 		if(n_msg && n_msg.length){
 			each(n_msg, function(n, v){
 				v["new"] = true;
 			});
-			self.trigger("message",[n_msg]);
+			self.d("message",[n_msg]);
 		}
 	},
 	_stop: function( type, msg ){
@@ -1234,22 +1286,15 @@ extend(webim.prototype, objectExtend,{
 		self.data.user.presence = "offline";
 		self.data.user.show = "unavailable";
 		self.buddy.clear();
-		self.trigger("stop", [type, msg] );
+		self.d("offline", [type, msg] );
 	},
-	autoOnline: function(){
-		return !this.status.get("o");
-	},
+	//autoOnline: function(){
+	//	return !this.status.get("o");
+	//},
 	_initEvents: function(){
-		var self = this, status = self.status, setting = self.setting, history = self.history, connection = self.connection, buddy = self.buddy;
-		connection.bind("connect",function(e, data){
-		}).bind("data",function( data ) {
-			self.handle(data);
-		}).bind("error",function(data){
-			self._stop("connect", "Connect Error");
-		}).bind("close",function(data){
-			self._stop("connect", "Disconnect");
-		});
-		self.bind("message", function(data){
+		var self = this, status = self.status, setting = self.setting, history = self.history, buddy = self.buddy;
+
+		self.a( "message", function( e, data ) {
 			var online_buddies = [], l = data.length, uid = self.data.user.id, v, id, type;
 			//When revice a new message from router server, make the buddy online.
 			for(var i = 0; i < l; i++){
@@ -1257,57 +1302,60 @@ extend(webim.prototype, objectExtend,{
 				type = v["type"];
 				id = type == "unicast" ? (v.to == uid ? v.from : v.to) : v.to;
 				v["id"] = id;
-				if(type == "unicast" && !v["new"]){
-					var msg = {id: id, presence: "online"};
+				if( type == "unicast" && !v["new"] ) {
+					var msg = { id: id, presence: "online" };
 					//update nick.
-					if(v.nick)msg.nick = v.nick;
-					online_buddies.push(msg);
+					if( v.nick ) msg.nick = v.nick;
+					online_buddies.push( msg );
 				}
 			}
-			if(online_buddies.length){
-				buddy.presence(online_buddies);
+			if( online_buddies.length ) {
+				buddy.presence( online_buddies );
 				//the chat window will pop out, need complete info
 				buddy.complete();
 			}
-			history.handle(data);
+			history.set( data );
 		});
-		function mapFrom(a){ 
-			var d = {id: a.from, presence: a.type}; 
-			if(a.show)d.show = a.show;
-			if(a.nick)d.nick = a.nick;
-			if(a.status)d.status = a.status;
+		function mapFrom( a ) { 
+			var d = { id: a.from, presence: a.type }; 
+			if( a.show ) d.show = a.show;
+			if( a.nick ) d.nick = a.nick;
+			if( a.status ) d.status = a.status;
 			return d;
 		}
 
-		self.bind("presence",function(data){
-			buddy.presence(map(data, mapFrom));
+		self.a("presence",function( e, data ) {
+			buddy.presence( map( data, mapFrom ) );
 			//online.length && buddyUI.notice("buddyOnline", online.pop()["nick"]);
 		});
 	},
 	handle: function(data){
 		var self = this;
-		data.messages && data.messages.length && self.trigger("message",[data.messages]);
-		data.presences && data.presences.length && self.trigger("presence",[data.presences]);
-		data.statuses && data.statuses.length && self.trigger("status",[data.statuses]);
+		data.messages && data.messages.length && self.d( "message", [ data.messages ] );
+		data.presences && data.presences.length && self.d( "presence", [ data.presences ] );
+		data.statuses && data.statuses.length && self.d( "status", [ data.statuses ] );
 	},
-	sendMsg: function(msg){
+	sendMessage: function( msg ) {
 		var self = this;
 		msg.ticket = self.data.connection.ticket;
-		self.trigger("sendMsg",[msg]);
-		self.request({
-			type: 'post',
-			url: self.options.urls.message,
+		self.d( "sendMessage", [ msg ] );
+		ajax({
+			type:"get",
+			dataType: "jsonp",
 			cache: false,
+			url: route( "message" ),
 			data: msg
 		});
 	},
 	sendStatus: function(msg){
 		var self = this;
 		msg.ticket = self.data.connection.ticket;
-		self.request({
-			type: 'post',
-			url: self.options.urls.status,
+		self.d( "sendStatus", [ msg ] );
+		ajax({
+			type:"get",
+			dataType: "jsonp",
 			cache: false,
+			url: route( "status" ),			
 			data: msg
 		});
 	},
@@ -1316,69 +1364,72 @@ extend(webim.prototype, objectExtend,{
 		msg.ticket = self.data.connection.ticket;
 		//save show status
 		self.data.user.show = msg.show;
-		self.status.set("s", msg.show);
-		self.request({
-			type: 'post',
-			url: self.options.urls.presence,
+		self.status.set( "s", msg.show );
+		self.d( "sendPresence", [ msg ] );
+		ajax( {
+			type:"get",
+			dataType: "jsonp",
 			cache: false,
+			url: route( "presence" ),			
 			data: msg
-		});
+		} );
 	},
 	//setStranger: function(ids){
 	//	this.stranger_ids = idsArray(ids);
 	//},
 	//stranger_ids: [],
-	online:function(params){
+	online: function( params ) {
 		var self = this, status = self.status;
-		var buddy_ids = [], room_ids = [], tabs = status.get("tabs"), tabIds = status.get("tabIds");
-		if(tabIds && tabIds.length && tabs){
-			each(tabs, function(k,v){
-				if(k[0] == "b") buddy_ids.push(k.slice(2));
-				if(k[0] == "r") room_ids.push(k.slice(2));
-			});
-		}
+		//var buddy_ids = [], room_ids = [], tabs = status.get("tabs"), tabIds = status.get("tabIds");
+		//if(tabIds && tabIds.length && tabs){
+		//	each(tabs, function(k,v){
+		//		if(k[0] == "b") buddy_ids.push(k.slice(2));
+		//		if(k[0] == "r") room_ids.push(k.slice(2));
+		//	});
+		//}
 		params = extend({                                
 			//stranger_ids: self.stranger_ids.join(","),
-			buddy_ids: buddy_ids.join(","),
-			room_ids: room_ids.join(","),
-			show: status.get("s") || "available"
+			//buddy_ids: buddy_ids.join(","),
+			//room_ids: room_ids.join(","),
+			//show: status.get("s") || "available"
 		}, params);
 		self._ready(params);
 		//set auto open true
-		status.set("o", false);
-		status.set("s", params.show);
+		//status.set("o", false);
+		//status.set("s", params.show);
 
-		self.request({
-			type:"post",
-			dataType: "json",
+		ajax({
+			type:"get",
+			dataType: "jsonp",
+			cache: false,
+			url: route( "online" ),
 			data: params,
-			url: self.options.urls.online,
 			success: function( data ){
 				if( !data ){
 					self._stop( "online", "Not Found" );
 				}else if( !data.success ) {
 					self._stop( "online", data.error_msg );
 				}else{
-					data.user = extend(self.data.user, data.user, {presence: "online"});
+					data.user = extend( self.data.user, data.user, { presence: "online" } );
 					self.data = data;
 					self._go();
 				}
 			},
-			error: function(data){
+			error: function( data ) {
 				self._stop( "online", "Not Found" );
 			}
 		});
 	},
-	offline:function(){
+	offline: function() {
 		var self = this, data = self.data;
-		self.status.set("o", true);
+		//self.status.set("o", true);
 		self.connection.close();
 		self._stop("offline", "offline");
-		self.request({
-			type: 'post',
-			url: self.options.urls.offline,
-			type: 'post',
+		ajax({
+			type:"get",
+			dataType: "jsonp",
 			cache: false,
+			url: route( "offline" ),
 			data: {
 				status: 'offline',
 				ticket: data.connection.ticket
@@ -1386,56 +1437,56 @@ extend(webim.prototype, objectExtend,{
 		});
 
 	},
-	_refresh:function(){
+	_deactivate: function(){
 		var self = this, data = self.data;
-		if(!data || !data.connection || !data.connection.ticket) return;
-		self.request({
-			type: 'post',
-			url: self.options.urls.refresh,
-			type: 'post',
+		if( !data || !data.connection || !data.connection.ticket ) return;
+		ajax( {
+			type:"get",
+			dataType: "jsonp",
 			cache: false,
+			url: route( "deactivate" ),
 			data: {
 				ticket: data.connection.ticket
 			}
-		});
+		} );
 	}
 
 });
-function idsArray(ids){
-	return ids && ids.split ? ids.split(",") : (isArray(ids) ? ids : (parseInt(ids) ? [parseInt(ids)] : []));
+
+function idsArray( ids ) {
+	return ids && ids.split ? ids.split( "," ) : ( isArray( ids ) ? ids : ( parseInt( ids ) ? [ parseInt( ids ) ] : [] ) );
 }
-function model(name, defaults, proto){
-	function m(data,options){
+function model( name, defaults, proto ) {
+	function m( data, options ) {
 		var self = this;
 		self.data = data;
-		self.options = extend({}, m.defaults,options);
-		isFunction(self._init) && self._init();
+		self.options = extend( {}, m.defaults, options );
+		isFunction( self._init ) && self._init();
 	}
 	m.defaults = defaults;
-	extend(m.prototype, objectExtend, proto);
-	webim[name] = m;
+	ClassEvent.on( m );
+	extend( m.prototype, proto );
+	webim[ name ] = m;
 }
 
-function route( key ) {
-	return route[key];
+function route( ob, val ) {
+	var options = ob;
+	if( typeof ob == "string" ) {
+		options[ ob ] = val;
+		if ( val === undefined )
+			return route[ ob ];
+	}
+	extend( route, options );
 }
 
 //_webim = window.webim;
 window.webim = webim;
 
-extend(webim,{
-	version:"1.1.0",
+extend( webim, {
+	version: "1.1.0",
 	defaults:{
-		urls:{
-			online: "webim/online",
-			offline: "webim/offline",
-			message: "webim/message",
-			presence: "webim/presence",
-			refresh: "webim/refresh",
-			status: "webim/status"
-		}
 	},
-	log:log,
+	log: log,
 	idsArray: idsArray,
 	now: now,
 	isFunction: isFunction,
@@ -1450,12 +1501,11 @@ extend(webim,{
 	map: map,
 	JSON: JSON,
 	ajax: ajax,
-	jsonp: jsonp,
 	comet: comet,
 	model: model,
 	route: route,
-	objectExtend: objectExtend
-});
+	ClassEvent: ClassEvent
+} );
 /*
 * 配置(数据库永久存储)
 * Methods:
@@ -1467,51 +1517,48 @@ extend(webim,{
 * 	
 */
 model("setting",{
-	url: "/webim/setting",
 	data: {
-		blocked_rooms: [],
-		play_sound:true,
-		buddy_sticky:true,
-		minimize_layout: true,
-		msg_auto_pop:true
+		//play_sound: true,
+		//buddy_sticky: true,
+		//minimize_layout: true,
+		//msg_auto_pop: true,
+		blocked_rooms: []
 	}
 },{
 	_init:function(){
 		var self = this;
-		if(self.options.jsonp)
-			self.request = jsonp;
-		else
-			self.request = ajax;
-		self.data = extend({}, self.options.data, self.data);
+		self.data = extend( {}, self.options.data, self.data );
 	},
-	get: function(key){
-		return this.data[key];
+	get: function( key ) {
+		return this.data[ key ];
 	},
-	set: function(key, value){
+	set: function( key, value ) {
 		var self = this, options = key;
-		if(!key)return;
-		if (typeof key == "string") {
+		if( !key )return;
+		if ( typeof key == "string" ) {
 			options = {};
-			options[key] = value;
+			options[ key ] = value;
 		}
 		var _old = self.data,
-		up = checkUpdate(_old, options);
+		up = checkUpdate( _old, options );
 		if ( up ) {
-			each(up,function(key,val){
-				self.trigger("update", [key, val]);
-			});
-			var _new = extend({}, _old, options);
+			each( up,function( key,val ) {
+				self.d( "update", [ key, val ] );
+			} );
+			var _new = extend( {}, _old, options );
 			self.data = _new;
-			self.request({
-				type: 'post',
-				url: self.options.url,
-				dataType: 'json',
+			ajax( {
+				type: 'get',
+				url: route( "setting" ),
+				dataType: 'jsonp',
 				cache: false,
-				data: {data: JSON.stringify(_new)}
-			});
+				data: {
+					data: JSON.stringify( _new )
+				}
+			} );
 		}
 	}
-});
+} );
 /*
 * 状态(cookie临时存储[刷新页面有效])
 * 
@@ -1527,76 +1574,62 @@ model("setting",{
 //        b:0, //is buddy open
 //        o:0 //has offline
 //}
-model("status",{
+
+model( "status", {
 	key:"_webim"
-},{
-	_init:function(){
-		var self = this, data = self.data;
-		if (!data){
-			var c = cookie(self.options.key);
-			self.data = c ? JSON.parse(c) : {};
+}, {
+	_init:function() {
+		var self = this, data = self.data, key = self.options.key;
+		if ( !data ) {
+			var c = window.localStorage ? window.localStorage.getItem( key ) : cookie( key );
+			self.data = c ? JSON.parse( c ) : {};
 		}else{
-			self._save(data);
+			self._save( data );
 		}
 	},
-	set: function(key, value){
+	set: function( key, value ) {
 		var options = key, self = this;
 		if (typeof key == "string") {
 			options = {};
 			options[key] = value;
 		}
 		var old = self.data;
-		if (checkUpdate(old, options)) {
-			var _new = extend({}, old, options);
-			self._save(_new);
+		if ( checkUpdate( old, options ) ) {
+			var _new = extend( {}, old, options );
+			self._save( _new );
 		}
 	},
-	get: function(key){
-		return this.data[key];
+	get: function( key ) {
+		return this.data[ key ];
 	},
-	clear:function(){
-		this._save({});
+	clear: function() {
+		this._save( {} );
 	},
-	_save: function(data){
-		this.data = data;
-		cookie(this.options.key, JSON.stringify(data), {
+	_save: function( data ) {
+		var self = this, key = self.options.key;
+		self.data = data;
+		data = JSON.stringify( data );
+		window.localStorage ? window.localStorage.setItem( key, data ) : cookie( key, data, {
 			path: '/',
 			domain: document.domain
-		});
+		} );
 	}
-});
+} );
 
 /**
- * buddy //联系人
- * attributes：
- * 	data []所有信息 readonly 
- * methods:
- * 	get(id)
- * 	handle(data) //handle data and distribute events
- * 	presence(data) //handle buddy presence.
- * 	complete() //Complete info.
- * 	update(ids) 更新用户信息 有更新时触发events:update
+* buddy //联系人
+*/
 
- * events:
- * 	online  //  data:[]
- * 	offline  //  data:[]
- * 	update 
- */
-
-model("buddy", {
-	url:"/webim/buddy"
+model( "buddy", {
+	active: true
 }, {
 	_init: function(){
 		var self = this;
-		if(self.options.jsonp)
-			self.request = jsonp;
-		else
-			self.request = ajax;
 		self.data = self.data || [];
 		self.dataHash = {};
-		self.handle(self.data);
+		self.set( self.data );
 	},
-	clear:function(){
+	clear:function() {
 		var self =this;
 		self.data = [];
 		self.dataHash = {};
@@ -1604,10 +1637,10 @@ model("buddy", {
 	count: function(conditions){
 		var data = this.dataHash, count = 0, t;
 		for(var key in data){
-			if(isObject(conditions)){
+			if( isObject( conditions ) ) {
 				t = true;
 				for(var k in conditions){
-					if(conditions[k] != data[key][k]) t = false;
+					if( conditions[k] != data[key][k] ) t = false;
 				}
 				if(t) count++;
 			}else{
@@ -1616,53 +1649,52 @@ model("buddy", {
 		}
 		return count;
 	},
-	get: function(id){
-		return this.dataHash[id];
+	get: function( id ) {
+		return this.dataHash[ id ];
 	},
-	complete: function(){
+	complete: function() {
 		var self = this, data = self.dataHash, ids = [], v;
-		for(var key in data){
-			v = data[key];
-			if(v.incomplete && v.presence == 'online'){
+		for( var key in data ) {
+			v = data[ key ];
+			if( v.incomplete && v.presence == 'online' ) {
 				//Don't load repeat. 
 				v.incomplete = false;
-				ids.push(key);
+				ids.push( key );
 			}
 		}
-		self.load(ids);
+		self.load( ids );
 	},
-	update: function(ids){
-		this.load(ids);
+	update: function( ids ) {
+		this.load( ids );
 	},
-	presence: function(data){
+	presence: function( data ) {
 		var self = this, dataHash = self.dataHash;
-		data = isArray(data) ? data : [data];
+		data = isArray( data ) ? data : [ data ];
 		//Complete presence info.
-		for(var i in data){
-			var v = data[i];
+		for( var i in data ) {
+			var v = data[ i ];
 			//Presence in [show,offline,online]
 			v.presence = v.presence == "offline" ? "offline" : "online";
-			v.incomplete = !dataHash[v.id];
+			v.incomplete = !dataHash[ v.id ];
 		}
-		self.handle(data);
+		self.set( data );
 	},
-	load: function(ids){
-		ids = idsArray(ids);
-		if(ids.length){
+	load: function( ids ) {
+		ids = idsArray( ids );
+		if( ids.length ) {
 			var self = this, options = self.options;
-			self.request({
+			ajax( {
 				type: "get",
-				url: options.url,
-				async: true,
+				url: route( "buddies" ),
 				cache: false,
-				dataType: "json",
-				data:{ ids: ids.join(",")},
+				dataType: "jsonp",
+				data:{ ids: ids.join(",") },
 				context: self,
-				success: self.handle
-			});
+				success: self.set
+			} );
 		}
 	},
-	handle: function(addData){
+	set: function( addData ) {
 		var self = this, data = self.data, dataHash = self.dataHash, status = {};
 		addData = addData || [];
 		var l = addData.length , v, type, add;
@@ -1686,60 +1718,28 @@ model("buddy", {
 				}
 			}
 		}
-		for (var key in status) {
-			self.trigger(key, [status[key]]);
+		for ( var key in status ) {
+			self.d( key, [ status[key] ] );
 		}
 		self.options.active && self.complete();
 	}
-});
+} );
 /*
 * room
-*attributes：
-*data []所有信息 readonly 
-*methods:
-*	get(id)
-*	handle()
-*	join(id)
-*	leave(id)
-*	count()
-*	initMember
-*	loadMember
-*	addMember
-*	removeMember
-*	members(id)
-*	member_cont(id)
-*
-*events:
-*	join
-*	leave
-*	block
-*	unblock
-*	addMember
-*	removeMember
-*
 *
 */
-(function(){
+( function() {
 	model("room", {
-		urls:{
-			join: "/webim/join",
-			leave: "/webim/leave",
-			member: "/webim/members"
-		}
 	},{
-		_init: function(){
+		_init: function() {
 			var self = this;
 			self.data = self.data || [];
 			self.dataHash = {};
-			if(self.options.jsonp)
-				self.request = jsonp;
-			else
-				self.request = ajax;
 		},
-		get: function(id){
+		get: function(id) {
 			return this.dataHash[id];
 		},
-		block: function(id){
+		block: function(id) {
 			var self = this, d = self.dataHash[id];
 			if(d && !d.blocked){
 				d.blocked = true;
@@ -1747,10 +1747,10 @@ model("buddy", {
 				each(self.dataHash,function(n,v){
 					if(v.blocked) list.push(v.id);
 				});
-				self.trigger("block",[id, list]);
+				self.d("block",[id, list]);
 			}
 		},
-		unblock: function(id){
+		unblock: function(id) {
 			var self = this, d = self.dataHash[id];
 			if(d && d.blocked){
 				d.blocked = false;
@@ -1758,10 +1758,10 @@ model("buddy", {
 				each(self.dataHash,function(n,v){
 					if(v.blocked) list.push(v.id);
 				});
-				self.trigger("unblock",[id, list]);
+				self.d("unblock",[id, list]);
 			}
 		},
-		handle: function(d){
+		set: function(d) {
 			var self = this, data = self.data, dataHash = self.dataHash, status = {};
 			each(d,function(k,v){
 				var id = v.id;
@@ -1774,7 +1774,7 @@ model("buddy", {
 						data.push(v);
 					}
 					else extend(dataHash[id], v);
-					self.trigger("join",[dataHash[id]]);
+					self.d("join",[dataHash[id]]);
 				}
 
 			});
@@ -1799,7 +1799,7 @@ model("buddy", {
 					info.nick = info.nick;
 					members.push(info);
 					room.count = members.length;
-					self.trigger("addMember",[room_id, info]);
+					self.d("addMember",[room_id, info]);
 				}
 			}
 		},
@@ -1814,7 +1814,7 @@ model("buddy", {
 						room.count--;
 					}
 				}
-				member && self.trigger("removeMember",[room_id, member]);
+				member && self.d("removeMember",[room_id, member]);
 			}
 		},
 		initMember: function(id){
@@ -1826,12 +1826,11 @@ model("buddy", {
 		},
 		loadMember: function(id){
 			var self = this, options = self.options;
-			self.request({
+			ajax( {
 				type: "get",
-				async: true,
 				cache: false,
-				url: options.urls.member,
-				dataType: "json",
+				url: route( "members" ),
+				dataType: "jsonp",
 				data: {
 					ticket: options.ticket,
 					id: id
@@ -1844,21 +1843,20 @@ model("buddy", {
 		join:function(id){
 			var self = this, options = self.options, user = options.user;
 
-			self.request({
+			ajax({
+				type: "get",
 				cache: false,
-				type: "post",
-				async: true,
-				url: options.urls.join,
-				dataType: "json",
+				url: route( "join" ),
+				dataType: "jsonp",
 				data: {
 					ticket: options.ticket,
 					id: id,
 					nick: user.nick
 				},
-				success: function(data){
-					//self.trigger("join",[data]);
-					self.initMember(id);
-					self.handle([data]);
+				success: function( data ) {
+					//self.d("join",[data]);
+					self.initMember( id );
+					self.set( [ data ] );
 				}
 			});
 		},
@@ -1866,69 +1864,45 @@ model("buddy", {
 			var self = this, options = self.options, d = self.dataHash[id], user = options.user;
 			if(d){
 				d.initMember = false;
-				self.request({
+				ajax({
+					type: "get",
 					cache: false,
-					type: "post",
-					url: options.urls.leave,
+					url: route( "leave" ),
+					dataType: "jsonp",					
 					data: {
 						ticket: options.ticket,
 						id: id,
 						nick: user.nick
 					}
 				});
-				self.trigger("leave",[d]);
+				self.d("leave",[d]);
 			}
 		},
 		clear:function(){
 		}
-	});
-})();
+	} );
+} )();
 /*
 history // 消息历史记录 Support unicast and multicast
-attributes：
-data 所有信息 readonly 
-methods:
-unicast(id) //Get
-multicast(id) //Get
-load(type, id)
-clear(type, id)
-init(type, id, data)
-handle(data) //handle data and distribute events
-
-events:
-unicast //id,data
-multicast //id,data
-clear //type, id
 */
 
-model("history",{
-	urls:{ load:"webim/history", clear:"webim/clear_history", download: "webim/download_history" }
+model("history", {
 }, {
 	_init:function(){
 		var self = this;
 		self.data = self.data || {};
 		self.data.unicast = self.data.unicast || {};
 		self.data.multicast = self.data.multicast || {};
-		if(self.options.jsonp)
-			self.request = jsonp;
-		else
-			self.request = ajax;
 	},
 	get: function( type, id ) {
 		return this.data[type][id];
 	},
-	unicast: function(id){
-		return this.data["unicast"][id];
-	},
-	multicast: function(id){
-		return this.data["multicast"][id];
-	},
-	handle:function(addData){
+	set:function( addData ) {
 		var self = this, data = self.data, cache = {"unicast": {}, "multicast": {}};
 		addData = makeArray(addData);
 		var l = addData.length , v, id, userId = self.options.userInfo.id;
 		if(!l)return;
-		for(var i = 0; i < l; i++){
+		for( var i = 0; i < l; i++ ) {
 			//for(var i in addData){
 			v = addData[i];
 			type = v.type;
@@ -1951,26 +1925,26 @@ model("history",{
 		}
 	},
 	_triggerMsg: function(type, id, data){
-		//this.trigger("message." + id, [data]);
-		this.trigger(type, [id, data]);
+		//this.d("message." + id, [data]);
+		this.d(type, [id, data]);
 	},
 	clear: function(type, id){
 		var self = this, options = self.options;
 		self.data[type][id] = [];
-		self.trigger("clear", [type, id]);
-		self.request({
-			url: options.urls.clear,
-			type: "post",
+		self.d("clear", [type, id]);
+		ajax({
+			url: route( "clear" ),
+			type: "get",
 			cache: false,
-			//dataType: "json",
-			data:{ type: type, id: id}
+			dataType: "jsonp",
+			data:{ type: type, id: id }
 		});
 	},
 	download: function(type, id){
 		var self = this, 
 		options = self.options, 
-		url = options.urls.download,
-		now = (new Date()).getTime(), 
+		url = route( "download" ),
+		now = now(), 
 		f = document.createElement('iframe'), 
 		d = new Date(),
 		ar = [],
@@ -1978,35 +1952,34 @@ model("history",{
 		for (var key in data ) {
 			ar[ ar.length ] = encodeURIComponent(key) + '=' + encodeURIComponent(data[key]);
 		}
-		url += (/\?/.test( url ) ? "&" : "?") + ar.join("&");
+		url += ( /\?/.test( url ) ? "&" : "?" ) + ar.join( "&" );
 		f.setAttribute( "src", url );
 		f.style.display = 'none'; 
-		document.body.appendChild(f); 
+		document.body.appendChild( f ); 
 	},
 	init: function(type, id, data){
 		var self = this;
 		if(isArray(data)){
 			self.data[type][id] = data;
-			self._triggerMsg(type, id, data);
+			self._triggerMsg( type, id, data );
 		}
 	},
 	load: function(type, id){
 		var self = this, options = self.options;
 		self.data[type][id] = [];
-		self.request({
-			url: options.urls.load,
-			async: true,
+		ajax( {
+			url: route( "history" ),
 			cache: false,
 			type: "get",
-			dataType: "json",
+			dataType: "jsonp",
 			data:{type: type, id: id},
 			//context: self,
 			success: function(data){
 				self.init(type, id, data);
 			}
-		});
+		} );
 	}
-});
+} );
 })(window, document);
 /*!
  * Webim UI v3.0.1
@@ -2015,8 +1988,8 @@ model("history",{
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Thu Oct 21 17:31:05 2010 +0800
- * Commit: 03e543ec30dbf96771f72f5e77cd11e3488e70a3
+ * Date: Wed Oct 27 14:47:00 2010 +0800
+ * Commit: 61d644719f552287c97ce8b5f4a4327a66aea540
  */
 (function(window,document,undefined){
 
@@ -2034,10 +2007,9 @@ inArray = webim.inArray,
 grep = webim.grep,
 JSON = webim.JSON,
 ajax = webim.ajax,
-jsonp = webim.jsonp,
 comet = webim.comet,
 model = webim.model,
-objectExtend = webim.objectExtend,
+ClassEvent = webim.ClassEvent,
 map = webim.map;
 
 function returnFalse(){
@@ -2493,7 +2465,8 @@ function webimUI(element, options){
 	self.options = extend({}, webimUI.defaults, options);
 	self._init();
 }
-extend(webimUI.prototype, objectExtend, {
+ClassEvent.on( webimUI );
+extend(webimUI.prototype, {
 	init: function() {
 		var self = this, 
 		im = self.im, 
@@ -2504,24 +2477,24 @@ extend(webimUI.prototype, objectExtend, {
 		buddyUI = self.buddy, 
 		layout = self.layout, 
 		room = im.room;
-		buddy.bind("online", function( data ){
+		buddy.a("online", function( e, data ){
 			layout.updateChat( "buddy", data );
-		}).bind("offline", function( data ){
+		}).a("offline", function( e, data ){
 			layout.updateChat( "buddy", data );
-		}).bind("update", function( data ){
+		}).a("update", function( e, data ){
 			layout.updateChat( "buddy", data );
 		});
-		room.bind("addMember", function(room_id, info){
+		room.a("addMember", function(e, room_id, info){
 			var c = layout.chat( "room", room_id );
 			c && c.addMember && c.addMember( info.id, info.nick, info.id == im.data.user.id );
-		}).bind("removeMember", function( room_id, info ){
+		}).a("removeMember", function( e, room_id, info ){
 			var c = layout.chat( "room", room_id );
 			c && c.removeMember && c.removeMember( info.id, info.nick );
 		});
 
 		//all ready.
 		//message
-		im.bind( "message", function( data ){
+		im.a( "message", function( e, data ){
 			var show = false,
 			l = data.length, d, uid = im.data.user.id, id, c, count = "+1";
 			for(var i = 0; i < l; i++){
@@ -2545,13 +2518,13 @@ extend(webimUI.prototype, objectExtend, {
 				if(d.from != uid) show = true;
 			}
 			if( show ){
-				self.trigger( "newMessage" );
+				self.d( "newMessage" );
 				sound.play('msg');
 				titleShow(i18n("new message"), 5);
 			}
 		});
 
-		im.bind("status", function(data){
+		im.a("status", function( e, data ){
 			each(data,function(n,msg){
 				var userId = im.data.user.id;
 				var id = msg['from'];
@@ -2565,21 +2538,21 @@ extend(webimUI.prototype, objectExtend, {
 			});
 		});
 		//for test
-		history.bind("unicast", function( id, data){
+		history.a("unicast", function(  e, id, data ){
 			var c = layout.chat("unicast", id), count = "+" + data.length;
 			if(c){
 				c.history.add(data);
 			}
 			//(c ? c.history.add(data) : im.addChat(id));
 		});
-		history.bind("multicast", function(id, data){
+		history.a("multicast", function( e, id, data ){
 			var c = layout.chat("multicast", id), count = "+" + data.length;
 			if(c){
 				c.history.add(data);
 			}
 			//(c ? c.history.add(data) : im.addChat(id));
 		});
-		history.bind("clear", function(type, id){
+		history.a("clear", function( e, type, id ){
 			var c = layout.chat(type, id);
 			c && c.history.clear();
 		});
@@ -2627,10 +2600,10 @@ extend(webimUI.prototype, objectExtend, {
 	_initEvents: function() {
 		var self = this;
 		//im events
-		self.im.bind( "go", function( data ){
+		self.im.a( "online", function( e, data ){
 			date.init( data.server_time );
 			//setting.set(data.setting);
-		});
+		} );
 	}
 });
 
@@ -2738,7 +2711,8 @@ function widget(name, defaults, prototype){
 	}
 	m.defaults = defaults;// default options;
 	// add prototype
-	extend(m.prototype, objectExtend, widget.prototype, prototype);
+	ClassEvent.on( m );
+	extend(m.prototype, widget.prototype, prototype);
 	webimUI[name] = m;
 }
 
@@ -2769,28 +2743,31 @@ extend(webimUI,{
 });
 webim.ui = webimUI;
 
-/* webim ui window */
+/* webim air window 
+*
+* http://help.adobe.com/en_US/air/reference/html/flash/desktop/NativeApplication.html#event:activate
+*
+*/
 
 widget( "window", {
 	main: false,
-        isMinimized: false,
+	visible: true,
+        maximizable: true,
         minimizable: true,
-        maximizable: false,
-	layoutUrl: "app:/test/air.window.html",
-	iconUrl: "app:/images/logo128.png",
         closeable: true,
-        count: 0, // notifyUser if count > 0
+	layout: "app:/test/air.window.html",
+        //count: 0, // notifyUser if count > 0
 	//A box with position:absolute next to a float may disappear
 	//http://www.brunildo.org/test/IE_raf3.html
 	//here '<div><div id=":window"'
-        template:'<div class="webim"><div id=":webim-window" class="webim-window ui-widget">\
+        template: '<div class="webim"><div id=":webim-window" class="webim-window ui-widget">\
                                             <div id=":window" class="webim-window-window webim-box">\
                                                     <div id=":header" class="webim-window-header ui-widget-header ui-corner-top">\
                                                     	<a id=":resize" title="<%=resize%>" class="webim-window-resize" href="#resize"><em class="ui-icon ui-icon-grip-diagonal-se"><%=resize%></em></a>\
                                                             <span id=":actions" class="webim-window-actions">\
-                                                                    <a id=":maximize" title="<%=maximize%>" class="webim-window-maximize" href="#maximize"><em class="ui-icon ui-icon-plus"><%=maximize%></em></a>\
-                                                                    <a id=":minimize" title="<%=minimize%>" class="webim-window-minimize" href="#minimize"><em class="ui-icon ui-icon-minus"><%=minimize%></em></a>\
-                                                                    <a id=":close" title="<%=close%>" class="webim-window-close" href="#close"><em class="ui-icon ui-icon-close"><%=close%></em></a>\
+                                                                    <a id=":maximize" title="<%=maximize%>" class="webim-window-maximize ui-state-default ui-corner-all" href="#maximize"><em class="ui-icon ui-icon-plus"><%=maximize%></em></a>\
+                                                                    <a id=":minimize" title="<%=minimize%>" class="webim-window-minimize ui-state-default ui-corner-all" href="#minimize"><em class="ui-icon ui-icon-minus"><%=minimize%></em></a>\
+                                                                    <a id=":close" title="<%=close%>" class="webim-window-close ui-state-default ui-corner-all" href="#close"><em class="ui-icon ui-icon-close"><%=close%></em></a>\
                                                             </span>\
                                                             <h4 id=":headerTitle"><%=title%></h4>\
                                                             <div id=":subHeader" class="webim-window-subheader"></div>\
@@ -2801,13 +2778,6 @@ widget( "window", {
                                             </div></div>'
 },
 {
-	html: function( obj ) {
-		return this.$.content.appendChild( obj );
-	},
-	subHeader: function( obj ){
-		//this.$.subHeader.innerHTML = "";
-		return this.$.subHeader.appendChild( obj );
-	},
 	_init: function( element, options ) {
 		var self = this, options = self.options, $ = self.$;
 		element = self.element;
@@ -2830,8 +2800,8 @@ widget( "window", {
 				//loader.paintsDefaultBackground = false;
 				loader.navigateInSystemBrowser = true;
 				//loader.stage.nativeWindow.alwaysInFront = true;
-				//loader.stage.nativeWindow.title = "sdfwe";
-				loader.load( new air.URLRequest( self.options.layoutUrl ) );
+				loader.stage.nativeWindow.title = options.title;
+				loader.load( new air.URLRequest( self.options.layout ) );
 				var ready = false;
 				addEvent( loader, air.Event.COMPLETE, function() {
 					if ( !ready ) {
@@ -2853,64 +2823,12 @@ widget( "window", {
 			self.__initEvents();
 		}
 
-		options.subHeader && self.subHeader( options.subHeader );
-		self.title( options.title, options.icon );
+		options.subHeader && self.header( options.subHeader );
+		self.title( options.title );
 		!options.minimizable && hide( $.minimize );
 		!options.maximizable && hide( $.maximize );
 		!options.closeable && hide( $.close );
-		options.count && self.notifyUser( "information", options.count );
-	},
-	notifyUser: function( type, count ) {
-		var self = this, $ = self.$;
-		if( type == "information" ) {
-			if( self.isMinimized() ) {
-				//Titanium.UI.setBadge( count ? count.toString() : null );
-			}
-		}
-	},
-	_count: function(){
-	},
-	title: function(title, icon){
-		var self = this, $ = self.$;
-		$.headerTitle.innerHTML = title;
-	},
-	_changeState:function(state){
-		var el = this.element, className = state == "restore" ? "normal" : state;
-		replaceClass( el, "webim-window-normal webim-window-maximize webim-window-minimize", "webim-window-" + className );
-		this.trigger( "displayStateChange", [state] );
-	},
-	maximize: function(){
-		var self = this, win = self.window.nativeWindow;
-		if( self.isMaximized() ) {
-			self.restore();
-		} else {
-			win.maximize(); 
-			self._changeState( "maximize" );
-		}
-	},
-	restore: function() {
-		var self = this, win = self.window.nativeWindow;
-		win && win.restore();
-		if(hasClass(self.element, "webim-window-normal"))return;
-		self._changeState("restore");
-	},
-	minimize: function() {
-		var self = this, win = self.window.nativeWindow;
-		if( self.isMinimized() ) {
-		} else {
-			win.minimize(); 
-			self._changeState( "minimize" );
-		}
-	},
-	resize: function(){
-	},
-	close: function(){
-		var self = this;
-		if ( self.options.main ) {
-			self.window.nativeWindow.visible = false;
-		} else {
-			self.window.nativeWindow.close();
-		}
+		!options.resizable && hide( $.resize );
 	},
 	__initEvents: function() {
 		var self = this, element = self.element, $ = self.$;
@@ -2972,40 +2890,106 @@ widget( "window", {
 
 			if ( self.options.main ) {
 				//Show window when activate the application.
-				var active = function(){
-					!win.visible && ( win.visible = true );
-				};
-				//addEvent( air.NativeApplication.nativeApplication, air.Event.ACTIVATE, active );
-				addEvent( air.NativeApplication.nativeApplication, air.InvokeEvent.INVOKE, active );
-				//Set application icon
-				var loader = new air.Loader();
-				addEvent(loader.contentLoaderInfo, air.Event.COMPLETE, function( e ){
-					air.NativeApplication.nativeApplication.icon.bitmaps = new runtime.Array(e.target.content.bitmapData);
-				});
-				loader.load(new air.URLRequest( self.options.iconUrl ) );
 			}
+
 			//Bind events
 			addEvent( win, air.NativeWindowBoundsEvent.RESIZE, function( e ) {
-				self.trigger( "resize", e );
-			});
+				self.d( "resize", e );
+			} );
 
 			addEvent( win, air.NativeWindowBoundsEvent.MOVE, function( e ) {
-				self.trigger( "move", e );
-			});
+				self.d( "move", e );
+			} );
 
 			addEvent( win, air.Event.ACTIVATE, function( e ) {
-				self.trigger( "activate", e );
-			});
+				self.d( "activate", e );
+			} );
 			addEvent( win, air.Event.DEACTIVATE, function( e ) {
-				self.trigger( "deactivate", e );
-			});
+				self.d( "deactivate", e );
+			} );
 			addEvent( win, air.Event.CLOSE, function( e ) {
-				self.trigger( "close", e );
-			});
+				self.d( "close", e );
+			} );
+			addEvent( win, air.NativeWindowDisplayStateEvent.DISPLAY_STATE_CHANGE, function( e ) {
+				self.d( "displayStateChange", e );
+			} );
 		}
 	},
+	content: function( obj ) {
+		obj ? this.$.content.appendChild( obj ) : this.$.content.innerHTML = "";
+	},
+	header: function( obj ) {
+		obj ? this.$.subHeader.appendChild( obj ) : this.$.subHeader.innerHTML = "";
+	},
+	title: function( title ) {
+		var self = this;
+		self.$.headerTitle.innerHTML = title;
+		self.options.title = title;
+		//Set air window title
+		self.window && ( self.window.nativeWindow.title = title );
+	},
+	icon: function( url ) {
+		var self = this;
+		self.options.title = title;
+	},
+	notifyUser: function( type ) {
+		//air.NotificationType.INFORMATIONAL: informational
+		//air.NotificationType.CRITICAL: critical
+		var self = this;
+		// Mac os is not support notification.
+		air.NativeWindow.supportsNotification && self.window && self.window.notifyUser( type );
+	},
+	show: function() {
+		this.window.nativeWindow.restore();
+
+	},
+	hide: function() {
+		this.window.nativeWindow.visible = false;
+	},
+	_changeState: function( state ) {
+		var el = this.element, className = state == "restore" ? "normal" : state;
+		replaceClass( el, "webim-window-normal webim-window-maximize webim-window-minimize", "webim-window-" + className );
+		//this.d( "displayStateChange", [state] );
+	},
+	maximize: function() {
+		var self = this;
+		if( self.isMaximized() ) {
+			self.restore();
+		} else {
+			self.window && self.window.nativeWindow && self.window.nativeWindow.maximize(); 
+			self._changeState( "maximize" );
+		}
+	},
+	restore: function() {
+		var self = this;
+		self.window && self.window.nativeWindow && self.window.nativeWindow.restore(); 
+		self._changeState("restore");
+	},
+	minimize: function() {
+		var self = this;
+		if( !self.isMinimized() ) {
+			self.window && self.window.nativeWindow && self.window.nativeWindow.minimize(); 
+			self._changeState( "minimize" );
+		}
+	},
+	close: function() {
+		var self = this;
+		if ( self.options.main ) {
+			self.hide();
+		} else {
+			self.window && self.window.nativeWindow && self.window.nativeWindow.close(); 
+		}
+	},
+
 	activate: function() {
-		return this.window && this.window.nativeWindow.activate();
+		var win = this.window && this.window.nativeWindow;
+		if ( win ) {
+			self.show();
+			win.restore();
+			win.activate();
+			win.orderToFront();
+			air.NativeApplication.nativeApplication.activate( win );
+		}
 	},
 	isActive: function() {
 		return this.window && this.window.nativeWindow.active;
@@ -3032,10 +3016,10 @@ app( "layout", function( options ) {
 	layoutUI = new webimUI.layout( options.layout, options.layoutOptions );
 	ui.addApp( "login", extend( { container: layoutUI.element }, options.loginOptions ) );
 	ui.addApp( "user", extend( { container: layoutUI.window.$.subHeader }, options.userOptions ) );
-	im.bind( "go", function(){
+	im.a( "online", function(){
 		layoutUI.showContent();
 	});
-	layoutUI.window.subHeader( layoutUI.tabs.element );
+	layoutUI.window.header( layoutUI.tabs.element );
 	return layoutUI;
 } );
 
@@ -3064,7 +3048,58 @@ widget("layout", {
 			chatWindows : {}
 		} );
 		addClass( self.tabs.element, "webim-hide" );
-		self.window.html( self.element );
+		self.window.content( self.element );
+		if ( window.runtime ) {
+			//Get icons
+			var supportIcon = false,
+			na = air.NativeApplication,
+			nan = na.nativeApplication,
+			winIcon = nan.icon,
+			iconUrl,
+			xmlobject = ( new DOMParser() ).parseFromString( nan.applicationDescriptor, "text/xml" ),
+			showWin = function() {
+				self.window.show();
+			};
+			if( na.supportsSystemTrayIcon ) {
+				supportIcon = true;
+				iconUrl = xmlobject.getElementsByTagName("image16x16")[0].textContent;
+				addEvent( winIcon, 'click', showWin );
+				winIcon.tooltip = self.window.options.title;
+			} else if ( na.supportsDockIcon ) { //Mac
+				supportIcon = true;
+				iconUrl = xmlobject.getElementsByTagName("image128x128")[0].textContent;
+				addEvent( nan, air.InvokeEvent.INVOKE, showWin );
+				self._badge = window.runtime.de && window.runtime.de.mattesgroeger.air.icon.AirIconBadge;
+			}
+			if ( supportIcon ) {
+				var loader = new air.Loader();
+				addEvent( loader.contentLoaderInfo, air.Event.COMPLETE, function( e ){
+					var d = e.target.content.bitmapData;
+					winIcon.bitmaps = new runtime.Array( d );
+					try {
+						self._badge && ( self._badge.customIcon =  new runtime.flash.display.Bitmap( d ) );
+					} catch(e){
+					}
+				} );
+				loader.load( new air.URLRequest( "app:/" + iconUrl ) );
+				if ( !na.supportsDockIcon ) {
+					var menu = new air.NativeMenu(),
+					logout = new air.NativeMenuItem( i18n("logout") );
+					addEvent( logout, air.Event.SELECT, function( e ) {
+						nan.exit();
+					} );
+					menu.addItem( logout );
+					winIcon.menu = menu;
+				}
+			}
+		}
+
+
+		//test
+		setInterval( function() {
+			self.notifyUser( air.NotificationType.INFORMATIONAL );
+		}, 5000 );
+		self.setBadge( "3" );
 	},
 	_initEvents: function(){
 		var self = this, win = self.window, $ = self.$;
@@ -3086,13 +3121,13 @@ widget("layout", {
 		addEvent($.expand, "click", function(){
 			if(!self.isMinimize()) return false;
 			self.expand();
-			self.trigger("expand");
+			self.d("expand");
 			return false;
 		});
 		addEvent($.collapse, "click", function(){
 			if(self.isMinimize()) return false;
 			self.collapse();
-			self.trigger("collapse");
+			self.d("collapse");
 			return false;
 		});
 		hoverClass($.collapse, "ui-state-hover", "ui-state-default");
@@ -3114,14 +3149,14 @@ widget("layout", {
 		widget.widget_title = options.title;
 		if ( container == "window" ) {
 			win = new webimUI.window(null, winOptions);
-			win.html( el );
+			win.content( el );
 			widget.container = win;
 		} else if ( container == "tab" ) {
 			self.tabs.add( widget.element, options.title, options.icon );
 			self.tabs.select( options.title );
 		}
 		//self.$[container ? container : "widgets"].insertBefore(win.element, before && self.widgets[before] ? self.widgets[before].window.element : null);
-		//win.bind("displayStateChange", function(state){ self._widgetStateChange(this, state);});
+		//win.a("displayStateChange", function(state){ self._widgetStateChange(this, state);});
 	},
 	showWidget: function( widget_name ) {
 		var self = this;
@@ -3161,7 +3196,7 @@ widget("layout", {
 				title: "webim",
 				maximizable: true,
 				icon: ""
-			} ).bind( "close", function() {
+			} ).a( "close", function() {
 				delete self.chatWindows[ id ];
 				delete self.chats[ id ];
 			} );
@@ -3187,6 +3222,14 @@ widget("layout", {
 		removeClass( this.$.widgets, "webim-hide" );
 		removeClass( this.tabs.element, "webim-hide" );
 		removeClass( this.$.shortcut, "webim-hide" );
+	},
+	setBadge: function( num ) {
+		try {
+			this._badge.label = num.toString();
+		} catch (e) {}
+	},
+	notifyUser: function( type ) {
+		window.runtime && air.NativeApplication.supportsDockIcon && air.NativeApplication.nativeApplication.icon.bounce( type );
 	}
 } );
 
@@ -3223,7 +3266,7 @@ widget("history",{
 	clear:function(){
 		var self = this;
 		self.$.content.innerHTML = "";
-		self.trigger("clear");
+		self.d("clear");
 	},
 	add: function(data){
 		data = makeArray(data);
@@ -3234,7 +3277,7 @@ widget("history",{
 			markup.push(self._renderMsg(val));
 		}
 		self.$.content.innerHTML += markup.join('');
-		self.trigger("update");
+		self.d("update");
 	},
 	_renderMsg: function(logItem){
 		var self = this;
@@ -3333,7 +3376,7 @@ widget("emot", {
 		each(element.firstChild.childNodes, function(i,v){
 			addEvent(v, "click", function(e){
 				removeClass(element, "webim-emot-show");
-				self.trigger('select', this.firstChild.getAttribute('rel'));
+				self.d('select', this.firstChild.getAttribute('rel'));
 			});
 		});
         },
@@ -3456,21 +3499,21 @@ app( "chat", function( options ) {
 			history.load( "multicast", id );
 		extend( options, { history: h, block: true, emot: true, clearHistory: false, member: true, msgType: "multicast" } );
 		var chatUI = new webimUI.chat( null, options );
-		chatUI.bind( "sendMsg", function( msg ) {
+		chatUI.a( "sendMsg", function( e, msg ) {
 			im.sendMsg( msg );
 			history.handle( msg );
-		}).bind("downloadHistory", function( info ){
+		}).a("downloadHistory", function( e, info ){
 			history.download( "multicast", info.id );
-		}).bind("select", function( info ) {
+		}).a("select", function( e, info ) {
 			info.presence = "online";
 			buddy.presence( info );//online
 			self.addChat( "buddy", info.id, info.nick );
 			layout.focusChat( "buddy", info.id );
-		}).bind("block", function( d ){
+		}).a("block", function( e, d ){
 			room.block( d.id );
-		}).bind("unblock", function( d ) {
+		}).a("unblock", function( e, d ) {
 			room.unblock( d.id );
-		}).bind( "destroy", function() {
+		}).a( "destroy", function() {
 			chatUI.options.info.blocked && room.leave(id);
 		});
 		setTimeout( function(){
@@ -3489,14 +3532,14 @@ app( "chat", function( options ) {
 		extend( options, { history: h, block: false, emot:true, clearHistory: true, member: false, msgType: "unicast" } );
 		var chatUI = new webimUI.chat( null, options );
 
-		chatUI.bind("sendMsg", function( msg ) {
+		chatUI.a("sendMsg", function( e, msg ) {
 			im.sendMsg( msg );
 			history.handle( msg );
-		}).bind("sendStatus", function( msg ) {
+		}).a("sendStatus", function( e, msg ) {
 			im.sendStatus( msg );
-		}).bind("clearHistory", function( info ){
+		}).a("clearHistory", function( e, info ){
 			history.clear( "unicast", info.id );
-		}).bind("downloadHistory", function( info ) {
+		}).a("downloadHistory", function( e, info ) {
 			history.download( "unicast", info.id );
 		});
 	}
@@ -3555,16 +3598,16 @@ widget("chat",{
 	setWindow: function( win ) {
 		var self = this;
 		self.window = win;
-		win.subHeader( self.header );
-		win.html( self.element );
+		win.header( self.header );
+		win.content( self.element );
 		win.title( self.options.info.nick );
 		self._bindWindow();
 	},
 	update: function(info){
 		var self = this;
 		if(info){
-			self.option("info", info);
-			self.history.option("info", info);
+			self.options.info = info;
+			self.history.options.info = info;
 			self._updateInfo(info);
 		}
 		var userOn = self.options.user.presence == "online";
@@ -3611,7 +3654,8 @@ widget("chat",{
 	},
 	_adjustContent: function(){
 		var content = this.$.content;
-		if ( content.scrollHeight - content.scrollTop < 200 )
+		//Don't auto scroll when user view history.
+		if ( content.scrollHeight - content.scrollTop - content.clientHeight < 200 )
 			content.scrollTop = content.scrollHeight;
 	},
 	_fitUI: function(e){
@@ -3621,17 +3665,17 @@ widget("chat",{
 	},
 	_bindWindow: function(){
 		var self = this, win = self.window;
-		win.bind("displayStateChange", function(type){
+		win.a("displayStateChange", function(e, type){
 			if(type != "minimize"){
         //fix firefox
         window.setTimeout(function(){self.$.input.focus();},0);
 				//self.$.input.focus();
 				self._adjustContent();
 			}
-		}).bind("close", function(){
+		}).a("close", function(){
 			self.destroy();
 		});
-		//win.bind("resize",{self: self}, self._fitUI);
+		//win.a("resize",{self: self}, self._fitUI);
 	},
 	_inputAutoHeight:function(){
 		var el = this.$.input, scrollTop = el[0].scrollTop;
@@ -3653,7 +3697,7 @@ widget("chat",{
 			body: val
 		};
 		plugin.call(self, "send", [null, self.ui({msg: msg})]);
-		self.trigger('sendMsg', msg);
+		self.d('sendMsg', msg);
 		//self.sendStatus("");
 	},
 	_inputkeypress: function(e){
@@ -3689,9 +3733,9 @@ widget("chat",{
 	_initEvents: function(){
 		var self = this, options = self.options, $ = self.$, placeholder = i18n("input notice"), gray = "webim-gray", input = $.input;
 
-		self.history.bind("update", function(){
+		self.history.a("update", function(){
 			self._adjustContent();
-		}).bind("clear", function(){
+		}).a("clear", function(){
 			self.notice(i18n("clear history notice"), 3000);
 		});
 		//输入法中，进入输入法模式时keydown,keypress触发，离开输入法模式时keyup事件发生。
@@ -3762,7 +3806,7 @@ widget("chat",{
 		var self = this;
 		if (!show || show == self._statusText || self.options.info.presence == "offline") return;
 		self._statusText = show;
-		self.trigger('sendStatus', {
+		self.d('sendStatus', {
 			to: self.options.info.id,
 			show: show
 		});
@@ -3792,7 +3836,7 @@ widget("chat",{
 			}, 10000);
 	},
 	destroy: function(){
-		this.trigger( "destroy" );
+		this.d( "destroy" );
 	},
 	ui:function(ext){
 		var self = this;
@@ -3811,7 +3855,7 @@ plugin.add("chat","fontcolor",{
 	init:function(e, ui){
 		var chat = ui.self;
 		var fontcolor = new webimUI.fontcolor();
-		fontcolor.bind("select",function(alt){
+		fontcolor.a("select",function(e, alt){
 			chat.focus();
 			chat.setStyle("color", alt);
 		});
@@ -3833,7 +3877,7 @@ plugin.add("chat","emot",{
 	init:function(e, ui){
 		var chat = ui.self;
 		var emot = new webimUI.emot();
-		emot.bind("select",function(alt){
+		emot.a("select",function( e, alt){
      
 			chat.focus();
 			chat.insert(alt, true);
@@ -3857,7 +3901,7 @@ plugin.add("chat","clearHistory",{
 		var trigger = createElement(tpl('<a href="#chat-clearHistory" title="<%=clear history%>"><em class="webim-icon webim-icon-clear"></em></a>'));
 		addEvent(trigger,"click",function(e){
 			preventDefault(e);
-			chat.trigger("clearHistory",[chat.options.info]);
+			chat.d("clearHistory",[chat.options.info]);
 		});
 		ui.$.tools.appendChild(trigger);
 	}
@@ -3874,13 +3918,13 @@ plugin.add("chat","block",{
 			preventDefault(e);
 			hide(block);
 			show(unblock);
-			chat.trigger("block",[chat.options.info]);
+			chat.d("block",[chat.options.info]);
 		});
 		addEvent(unblock,"click",function(e){
 			preventDefault(e);
 			hide(unblock);
 			show(block);
-			chat.trigger("unblock",[chat.options.info]);
+			chat.d("unblock",[chat.options.info]);
 		});
 		ui.$.tools.appendChild(block);
 		ui.$.tools.appendChild(unblock);
@@ -3894,7 +3938,7 @@ extend(webimUI.chat.prototype, {
 		var el = createElement('<li><a class="'+ (disable ? 'ui-state-disabled' : '') +'" href="'+ id +'">'+ nick +'</a></li>');
 		addEvent(el.firstChild,"click",function(e){
 			preventDefault(e);
-			disable || self.trigger("select", [{id: id, nick: nick}]);
+			disable || self.d("select", [{id: id, nick: nick}]);
 		});
 		li[id] = el;
 		self.$.member.appendChild(el);
@@ -3927,7 +3971,7 @@ plugin.add("chat","downloadHistory",{
 		var trigger = createElement(tpl('<a style="float: right;" href="#chat-downloadHistory" title="<%=download history%>"><em class="webim-icon webim-icon-download"></em></a>'));
 		addEvent(trigger,"click",function(e){
 			preventDefault(e);
-			chat.trigger("downloadHistory",[chat.options.info]);
+			chat.d("downloadHistory",[chat.options.info]);
 		});
 		ui.$.tools.appendChild(trigger);
 	}
@@ -4082,18 +4126,18 @@ app( "user", function( options ) {
 	var userUI = new webimUI.user();
 	hide( userUI.element );
 	options.container && options.container.appendChild( userUI.element );
-	userUI.bind("online", function( params ) {
+	userUI.a("online", function( e, params ) {
 		im.online( params );
-	}).bind("offline", function(){
+	}).a("offline", function(){
 		im.offline();
-	}).bind("presence", function( params ) {
+	}).a("presence", function( e, params ) {
 		im.sendPresence( params );
 	} );
 	userUI.update( im.data.user );
-	im.bind( "go", function() {
+	im.a( "online", function() {
 		show( userUI.element );
 		userUI.update( im.data.user );
-	}).bind( "stop", function( type ) {
+	}).a( "offline", function( e, type ) {
 		userUI.show( "unavailable" );
 	});
 	return userUI;
@@ -4159,15 +4203,15 @@ widget("user",{
 			//offline
 			if(type != "unavailable"){
 				//self.show(type);
-				self.trigger("online", [{show: type}]);
+				self.d("online", [{show: type}]);
 			}
 		}else if(info.show != type) {
 			if(type == "unavailable"){
-				self.trigger( "offline", [] );
+				self.d( "offline", [] );
 			}else if( info.show == "unavailable" ) {
-				self.trigger("online", [{show: type}]);
+				self.d("online", [{show: type}]);
 			}else{
-				self.trigger("presence", [{show: type, status: info.status}]);
+				self.d("presence", [{show: type, status: info.status}]);
 			}
 		}
 	},
@@ -4184,12 +4228,12 @@ app("login", function( options ) {
 	var ui = this, im = ui.im;
 	var loginUI = new webimUI.login(null, options);
 	options.container && options.container.appendChild( loginUI.element );
-	loginUI.bind( "login", function( params ){
+	loginUI.a( "login", function( e, params ){
 		im.online( params );
 	});
-	im.bind("go", function() {
+	im.a("online", function() {
 		loginUI.hide();
-	}).bind("stop", function( type, msg ) {
+	}).a("offline", function( e, type, msg ) {
 		type == "online" && loginUI.showError( msg );
 	});
 	return loginUI;
@@ -4234,7 +4278,7 @@ widget("login", {
 		hoverClass( $.submit, "ui-state-hover" );
 		addEvent( $.form, "submit", function( e ) {
 			preventDefault( e );
-			self.trigger( "login", [{ username: $.username.value,  password: $.password.value, question: $.question.value, answer: $.answer.value }] );
+			self.d( "login", [{ username: $.username.value,  password: $.password.value, question: $.question.value, answer: $.answer.value }] );
 		} );
 	},
 	hide: function() {
@@ -4292,12 +4336,12 @@ app("buddy", function( options ){
 
 
 	//select a buddy
-	buddyUI.bind("select", function(info){
+	buddyUI.a("select", function(e, info){
 		ui.addChat("buddy", info.id);
 		ui.layout.focusChat("buddy", info.id);
 	});
 	/*
-	buddyUI.window.bind("displayStateChange",function(type){
+	buddyUI.window.a("displayStateChange",function(type){
 		if(type != "minimize"){
 			buddy.option("active", true);
 			im.status.set("b", 1);
@@ -4313,25 +4357,25 @@ app("buddy", function( options ){
 	var grepVisible = function(a){ return a.show != "invisible" && a.presence == "online"};
 	var grepInvisible = function(a){ return a.show == "invisible"; };
 	//some buddies online.
-	buddy.bind("online", function(data){
+	buddy.a("online", function( e, data){
 		buddyUI.add(grep(data, grepVisible));
 	});
 	//some buddies offline.
-	buddy.bind("offline", function(data){
+	buddy.a("offline", function( e, data){
 		buddyUI.remove(map(data, mapId));
 	});
 	//some information has been modified.
-	buddy.bind( "update", function(data){
+	buddy.a( "update", function( e, data){
 		buddyUI.add(grep(data, grepVisible));
 		buddyUI.update(grep(data, grepVisible));
 		buddyUI.remove(map(grep(data, grepInvisible), mapId));
 	} );
 	buddyUI.offline();
-	im.bind( "ready", function(){
+	im.a( "beforeOnline", function(){
 		buddyUI.online();
-	}).bind("go", function() {
+	}).a("online", function() {
 		buddyUI.titleCount();
-	}).bind( "stop", function( type, msg ) {
+	}).a( "offline", function( type, msg ) {
 		buddyUI.offline();
 		if ( type == "connect" ) {
 		}
@@ -4392,12 +4436,12 @@ widget("buddy",{
 var a = $.online.firstChild;
 addEvent(a, "click", function(e){
 preventDefault(e);
-self.trigger("online");
+self.d("online");
 });
 hoverClass(a, "ui-state-hover");
 addEvent($.offline.firstChild, "click", function(e){
 preventDefault(e);
-self.trigger("offline");
+self.d("offline");
 });
 */
 
@@ -4489,7 +4533,7 @@ self.trigger("offline");
 			var a = el.firstChild;
 			addEvent(a, "click",function(e){
 				preventDefault(e);
-				self.trigger("select", [info]);
+				self.d("select", [info]);
 				this.blur();
 			});
 
@@ -4593,7 +4637,7 @@ online
 */
 app("room", function( options ) {
 	var ui = this, im = ui.im, room = im.room, setting = im.setting,u = im.data.user, layout = ui.layout;
-	var roomUI = ui.room = new webim.ui.room(null).bind("select",function(info){
+	var roomUI = ui.room = new webim.ui.room(null).a("select",function( e, info){
 		ui.addChat("room", info.id);
 		ui.layout.focusChat("room", info.id);
 	});
@@ -4603,24 +4647,24 @@ app("room", function( options ) {
 		icon: "room"
 	} );
 	//
-	im.setting.bind("update",function(key, val){
-		if(key == "buddy_sticky")roomUI.window.option("sticky", val);
+	im.setting.a("update",function(key, val){
+		//if(key == "buddy_sticky")roomUI.window.option("sticky", val);
 	});
-	room.bind("join",function(info){
+	room.a("join",function( e, info){
 		updateRoom(info);
-	}).bind("leave", function(rooms){
+	}).a("leave", function( e, rooms){
 
-	}).bind("block", function(id, list){
+	}).a("block", function( e, id, list){
 		setting.set("blocked_rooms",list);
 		updateRoom(room.get(id));
 		room.leave(id);
-	}).bind("unblock", function(id, list){
+	}).a("unblock", function( e, id, list){
 		setting.set("blocked_rooms",list);
 		updateRoom(room.get(id));
 		room.join(id);
-	}).bind("addMember", function(room_id, info){
+	}).a("addMember", function( e, room_id, info){
 		updateRoom(room.get(room_id));
-	}).bind("removeMember", function(room_id, info){
+	}).a("removeMember", function( e, room_id, info){
 		updateRoom(room.get(room_id));
 	});
 	//room
@@ -4699,7 +4743,7 @@ widget("room",{
 			var a = el.firstChild;
 			addEvent(a, "click",function(e){
 				preventDefault(e);
-				self.trigger("select", [info]);
+				self.d("select", [info]);
 				this.blur();
 			});
 			ul.appendChild(el);

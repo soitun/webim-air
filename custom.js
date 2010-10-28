@@ -34,7 +34,6 @@ _IMC.notice =  "请使用demo.webim20.cn/home帐号登录";
 		msg: "app:/static/assets/sound/msg.mp3"
 	};
 	webim.ui.window.defaults.layoutUrl = "app:/air.window.html";
-	webim.ui.window.defaults.iconUrl = "app:/static/images/logo128.png";
 	var ui = new webim.ui(document.body, {
 		soundUrls: soundUrls,
 		layoutOptions: {
