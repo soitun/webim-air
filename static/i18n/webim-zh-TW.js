@@ -92,7 +92,8 @@ webim.ui.i18n.store('zh-TW',{
 	"password": "\u5bc6\u78bc",
 	"question": "\u554f\u984c",        
 	"answer": "\u7b54\u6848",
-	"login": "\u767b\u9304"
+	"login": "\u767b\u9304",
+	"exit": "\u9000\u51fa"
 });
 
 webim.ui.i18n.store('zh-TW',{

@@ -5,8 +5,8 @@
  * Copyright (c) 2010 Hidden
  * Released under the MIT, BSD, and GPL Licenses.
  *
- * Date: Thu Oct 28 11:51:15 2010 +0800
- * Commit: ab6be23c52f90b88d438e5f5bed3d616231a503e
+ * Date: Thu Oct 28 17:08:28 2010 +0800
+ * Commit: 72f81786345f4dee11f6c5bf100e9065fdf33193
  */
 
 body {
@@ -265,7 +265,6 @@ input:focus, select:focus, textarea:focus{
 	outline: none;
 }
 
-
 .webim-box{
 	display: -webkit-box;
 	-webkit-box-orient: vertical;
@@ -276,6 +275,15 @@ input:focus, select:focus, textarea:focus{
 	width: 100%;
 	-webkit-box-sizing: border-box;
 	-moz-box-sizing: border-box;
+}
+
+.webim-box-h{
+	display: -webkit-box;
+	-webkit-box-orient: horizontal;
+	-webkit-box-align: stretch;
+	display: -moz-box;
+	-moz-box-orient: horizontal;
+	-moz-box-align: stretch;
 }
 
 .webim-flex{
@@ -299,6 +307,10 @@ html, body, .webim, .webim-window {
 
 .webim-window{
 	padding: 10px 20px 30px;
+}
+
+.webim-window-maximized .webim-window{
+	padding: 0;
 }
 
 .webim-window-window {
@@ -383,14 +395,17 @@ html, body, .webim, .webim-window {
 	border-left-width:0;
 	border-right-width:0;
 }
-.webim .webim-chat-content{
-        height: 16em;
-	-webkit-box-flex: 1;
-	-moz-box-flex: 1;
-        overflow-y:auto;
-        overflow-x:visible;
-        *background:url(about:blank);
+.webim .webim-chat-main, .webim .webim-chat-sidebar{
+        /*height: 16em; */
+        overflow-y: auto;
+        overflow-x: hidden;
+        *background: url(about:blank);
 }
+
+.webim .webim-chat-sidebar{
+	width: 100px;
+}
+
 .webim .webim-chat-status{
         font-style: italic;
         margin-left: .8em;
@@ -438,34 +453,26 @@ html, body, .webim, .webim-window {
 .webim .webim-chat-tools a{
         padding: .2em;
 }
-.webim .webim-chat-tool-content{
+.webim .webim-chat-tool-content {
         position: relative;
         height:0;
 }
 
+.webim-chat-buddy .webim-chat-sidebar{
+	width: 0px;
+}
+
 /*member*/
 .webim .webim-member{
-	display: none;
-	margin-top:  -.1em;
-	height: 16em;
-	width: 7em;
-	left: -7.06em;
-	position: absolute;
+	border-width: 0;
+	border-left-width: 1px;
 }
-.webim .webim-chat .webim-member .webim-bgiframe{
-	top: -.1em;
-	left: -.1em;
-	width: 7.2em;
-	height: 16.2em;
-}
+
 .webim .webim-member h4{
 	height: 1.5em;
 	padding: .2em .3em 0;
 }
 .webim .webim-member ul{
-	height: 14.3em;
-	width: 7em;
-	position: absolute;
         overflow-y:auto;
         overflow-x:hidden;
 	list-style: none;
