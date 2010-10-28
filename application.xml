@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <application xmlns="http://ns.adobe.com/air/application/2.5">
-	<!--http://help.adobe.com/en_US/air/reference/html/index.html http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff1.html -->
+	<!--
+	http://help.adobe.com/en_US/air/reference/html/index.html 
+	http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff1.html 
+	-->
 	<id>cn.webim20.im</id>
-	<versionNumber>0.1.2</versionNumber>
-	<versionLabel>v0.1.2</versionLabel>
+	<versionNumber>0.1.3</versionNumber>
+	<versionLabel>v0.1.3</versionLabel>
 	<filename>nextim</filename>
 	<name>NextIM</name>
 	<description>nextim 20</description>

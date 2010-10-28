@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?> 
+<!--http://help.adobe.com/en_US/air/build/WS5b3ccc516d4fbf351e63e3d118666ade46-7ff2.html-->
 <configuration xmlns="http://ns.adobe.com/air/framework/update/configuration/1.0"> 
 	<url>http://github.com/webim/webim-air/raw/master/updateDescriptor.xml</url>
 	<delay>1</delay>
